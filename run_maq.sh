@@ -4,28 +4,141 @@
 #
 # daniel.nilsson@izb.unibe.ch, daniel.k.nilsson@gmail.com
 #
-# USAGE: run_maq.sh tagfile.fastq referenecesequence.fasta [gene_feature_type(gene)]
-#
-# Expects: * referenceseqeunce.gff in same dir as referencesequence.fasta
-#          * maq binary installed in $MAQBIN
-#          * several of the other "sladdlampa"-scripts in $BINDIR
-#          * indirectly, bioPerl in the perl library path (and a perl 5.8.x interpreter at /usr/bin)
-#
-# Environment: Several bash environment variables influence the pipeline behaviour
-#            BINDIR           (~/install/bin)
-#            MAQBIN           (~/install/maq-0.7.1/maq)
-#            alqt             (30)
-#            single           (yes)
-#            forceupdate      (no)
-#            uorfutrcutofflen (2000)
-#            runuorf          (no)
+# POD documentation to follow throughout the file - use e.g. perldoc to read
 #
 
+: <<'POD_INIT'
+
+=head1 NAME
+
+run_maq.sh - core of the SLadd pipeline for turning SLT data into results
+
+=head1 AUTHOR
+
+Daniel Nilsson, daniel.nilsson@izb.unibe.ch, daniel.nilsson@ki.se, daniel.k.nilsson@gmail.com
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2009, 2010 held by Daniel Nilsson. The package is realesed for use under the Perl Artistic License.
+
+=head1 SYNOPSIS
+
+USAGE: C<run_maq.sh tagfile.fastq referenecesequence.fasta [gene_feature_type(gene)]>
+
+=head1 DESCRIPTION
+
+Takes SLT tags and an annotated reference genome and provides
+annotation of spliced leader addition sites and expression levels.
+
+This is a make like pipeline implemented in bash, calling mostly perl
+and R programs. The need for (re)evaluation of a particular result is
+based on the existance and modification time of the result file in
+relation to the files needed to produce it. If you want to repeat an
+analysis, ensure that your new/modified input files are dated more
+recently than the particular analysis result you are interested in. Or
+invoke the pipeline with forceupdate=yes, but keep in mind that that
+will rerun everything.
+
+Please see the F<sladd_howto.pdf>/F<sladd_howto.odt> for more information.
+
+=head1 DEPENDENCIES
+
+Expects:
+
+=over 4
+
+=item * 
+
+F<referenceseqeunce.gff> in same dir as F<referencesequence.fasta>
+
+=item *
+          
+maq binary installed in C<$MAQBIN>
+
+=item *
+
+Several of the other "sladdlampa"-scripts in C<$BINDIR>
+
+=item *
+
+Indirectly, bioPerl in the perl library path (and a perl 5.8.x interpreter at /usr/bin)
+
+=back
+
+=head1 SHELL ENVIRONMENT VARIABLES
+
+Several environment variables influence the pipeline behaviour.
+
+=over 4
+
+=item BINDIR [path (~/install/sladd)]          
+
+Directory where the rest of the SLADD pipeline lives.
+
+=item ALIGN [<maq|bowtie> (maq)]
+
+The short read aligner to use.  Currently limited to maq or bowtie.
+
+=item MAQBIN [path (~/install/maq-0.7.1/maq)] 
+
+Your maq binary.
+
+=item BOWTIEBINDIR [path (~/install/bowtie-0.12.5/)]
+
+The path to your bowtie installation.
+
+=item SEQLOGOBIN [path (~/install/weblogo/seqlogo)]
+                 
+The path to the Weblogo seqlogo binary
+
+=item single [<yes|no> (yes)]
+             
+Toggle runnig separate analysis with alignment quality cutoff for trusted (single) mappings.                    
+
+=item alqt [integer (30)] 
+           
+Alignment quality cutoff for trusted (single) mappings.
+                     
+=item forceupdate [<yes|no> (no)]
+                     
+Force rerun of all analysis regardless of 
+modification times.
+
+=item runuorf [<yes|no> (no)]
+
+Run the fairly slow variant of uORF analysis.
+
+=item utrcutoff [integer (0)] 
+
+Cutoff UTR length for splicesite analysis.
+Set to the longest UTR you consider meaningful.
+Set to 0 for no limit.
+
+=item uorfutrcutofflen [integer (2000)]
+          
+Cutoff UTR length for uORF analysis.
+
+=item plotsplicesites [<yes|no> (yes)]
+
+Set plotsplicesites=no to avoid extracting and plotting splicesites.
+
+=back
+
+=head1 OPTIONS AND ARGUMENTS
+
+=over 4
+
+=cut
+ 
+POD_INIT
+
+#
 # check input environment variables and set unset ones to default values
+# 
 
-# BINDIR holds the scripts/binaries for this pipeline
+# BINDIR is where the rest of the scripts and binaries in the SLadd pipeline reside
 if [ -z "$BINDIR" ]
-then   	
+then
 	#BINDIR=~/src/sladd
 	BINDIR=~/install/sladd
 fi
@@ -37,6 +150,12 @@ if [ -z "$MAQBIN" ]
 then
 	#MAQBIN=~/bin/maq
 	MAQBIN=~/install/maq-0.7.1/maq
+fi
+
+# BOWTIEBINDIR is the bowtie installation directory
+if [ -z "$BOWTIEBINDIR" ]
+then
+	BOWTIEBINDIR=~/install/bowtie-0.12.5
 fi
 
 # SEQLOGO is the weblogo path to the Weblogo seqlogo app
@@ -58,12 +177,6 @@ then
     single=yes
 fi
 
-# set forceupdate=yes to run all available analyses, even if the file modification times advise against it 
-if [ -z "$forceupdate" ]
-then
-    forceupdate=no
-fi
-
 # set plotsplicesites=no to avoid extracting and plotting splicesites
 if [ -z "$plotsplicesites" ]
 then
@@ -73,7 +186,7 @@ fi
 beforeag=88
 afterag=5
 
-# utrlen to consider for uorf analysis
+# utrlen to consider for splicesite analysis
 if [ -z "$utrcutoff" ]
 then
     utrcutoff=0
@@ -91,21 +204,43 @@ then
     runuorf=no
 fi
 
+# uses pipelinefunk.sh for needsUpdate, registerFile etc.
+
+. pipelinefunk.sh
+
 # CALLED will contain a complete pathname for this script
 CALLED=$0
 
 # command line arguments
-
 if [ $# -lt 2 ]
 then
-        echo "USAGE: ${0##*/} tagfile.fastq refsequence.fasta [gene_gff_type]"
+	perldoc $CALLED
+        echo "USAGE: ${CALLED##*/} tagfile.fastq refsequence.fasta [gene_gff_type]"
         exit 1
 fi
 
-# first argument : tagfilename.fastq : name convention is libname.sizefilter.fastq
-tagfile=$1 
+: <<'POD_ARG'
 
-# second argument : refsequencename.fasta, also expects to find refsequencename.gff in the same directory
+=item first argument: tagfilename.fastq
+
+first argument : F<tagfilename.fastq> : name convention is F<libname.sizefilter.fastq>
+
+=cut
+
+POD_ARG
+
+tagfile=$1
+
+: <<'POD_ARG'
+
+=item second argument: referencesequence.fasta
+
+second argument : F<refsequencename.fasta>, also expects to find F<refsequencename.gff> in the same directory.
+
+=cut
+
+POD_ARG
+
 reffile=$2 
 
 if [ ! -e "$tagfile" ]
@@ -127,7 +262,18 @@ then
     exit 1
 fi
 
-# GFF feature type to associate tags with (gene, CDS, mRNA or such)
+: <<'POD_ARG'
+
+=item third argument, optional: genetype
+
+third argument: genetype : GFF feature type to associate tags with (gene, CDS, mRNA or such).
+
+=back
+
+=cut
+
+POD_ARG
+
 genetype=gene
 
 if [ $# -eq 3 ]
@@ -136,31 +282,15 @@ then
 fi
 
 updates=no
+: <<'POD_FILE'
 
-function needsUpdate()
-{
-    # USAGE: needsUpdate(target, prereq [, prereq]*)
-    # return true (needsupdate=yes) if target does not yet exist, is older than its prereqs or forceupdate=yes is in effect.
+=head1 FILES AND FUNCTIONS
 
-    needsupdate="no"
-    
-    if [ "$forceupdate" = "yes" ] 
-    then
-	needsupdate="yes"
-    fi
+=over 4
 
-    target=$1;
-    
-    for prereq in ${@:2}
-    do
-	if [ $target -ot $prereq ]
-	then
-	    needsupdate="yes"
-	fi
-   done
-    
-    [ "$needsupdate" = "yes" ]
-}
+=cut 
+
+POD_FILE
 
 # check if reference bfa does not exist, or is older than fasta
 
@@ -174,9 +304,8 @@ fi
 
 # count the number of reads in tagfile
 # [TODO] save result for repetitive script use?
-libsize=`grep -c ^@ $tagfile`
 
-# check if bfq does not exist, or is older than fastq
+libsize=`grep -c ^@ $tagfile`
 
 # maq performs optimally around 2M reads, according to its manual pages
 # if the number of reads is considerably larger than that (3M), split before bfq generation, 
@@ -190,6 +319,7 @@ then
     maqmapupdate="no"
     
     # split into 8M/4=2M line files
+    registerFile $tagfile.done.split temp
     if needsUpdate $tagfile.done.split $tagfile
     then
 	split -l 8000000 $tagfile ${tagfileprefix}
@@ -197,7 +327,8 @@ then
     fi
 
     splitnr=0
-    
+
+    # check if bfq does not exist, or is older than fastq
     for splittagfile in ${tagfileprefix}[a-z][a-z]
     do
 	bfqfile=${splittagfile}.bfq
@@ -229,6 +360,9 @@ then
 	$MAQBIN mapmerge $maqmap ${splitmaqmap[@]}
     fi
 else
+
+    # check if bfq does not exist, or is older than fastq
+
     bfqfile=${tagfile%fastq}bfq
 
     if needsUpdate $bfqfile $tagfile
@@ -309,7 +443,7 @@ fi
 for seq in `cat $fastalist` ;
 do
 
-    # update refgff split if there is a new refgff available
+    # update refseqgff split if there is a new refseqgff available
 
     refseqgff=${reffile%.fasta}.${seq}.gff
 
@@ -339,7 +473,7 @@ maqmapsingletab=${maqmapsingle}.counts.tab
 maqmapuorftab=${maqmaptab%.tab}.uorf.tab
 maqmapsingleuorftab=${maqmapsingletab%.tab}.uorf.tab
 
-# update flags for agglomerate multi sequence unit files 
+# update flags for agglomeration of multi sequence unit files 
 maqmap_update=no
 maqmapsingle_update=no
 crunch_update=no
@@ -531,6 +665,18 @@ done
 
 # join the split crunch GFFs
 
+: <<'POD_FUNC'
+
+=item UpdateGFF(basefilename,suffix,searchstring)
+
+    Find lines including searchstring in a file named almost like basefilename, but with each sequence name in the global fastalist inserted before .suffix in the basefilename.
+
+    E.g. C<UpdateGFF $maqmapcrunchgff crunch.gff maqmatch>
+
+=cut
+
+POD_FUNC
+
 function UpdateGFF()
 {
     local this_gff=$1
@@ -563,6 +709,16 @@ fi
 
 # join the tabs
 
+: <<'POD_FUNC'
+
+=item UpdateTab(tabfilename,suffix)
+
+Update table tabfilename, by inserting sequence names from fasta list directly followed by the contents of per-sequence-sub-tabfilename with the sequnece name from the the global fastalist inserted before .suffix in the basefilename. E.g. C<UpdateTab ${maqmapsingleuorftab} uorf.tab>
+
+=cut
+
+POD_FUNC
+
 function UpdateTab()
 {
     local this_tab=$1
@@ -580,7 +736,6 @@ function UpdateTab()
 
     updates=yes
 }
-
 
 # update the joint tabs also if any of the subtabs has mysteriously updated.. (shortcut for development)
 for seq in `cat $fastalist` ;
@@ -648,6 +803,16 @@ then
     UpdateTab ${maqmapsingleuorftab} uorf.tab
 fi
 
+: <<'POD_FUNC'
+
+=item ExtractSites(optdesc,optstr)
+
+E.g. C<ExtractSites "internal.once" "-E -1">
+
+=cut
+
+POD_FUNC
+
 function ExtractSites()
 {
     optdesc=$1
@@ -709,6 +874,20 @@ then
     ExtractSites "external.once" "-I -1"
 fi
 
+: <<'POD_FUNC'
+
+=item CreateSubTable(basetab, tabname, awkscript[, comment_for_summary])
+
+Function to make filtered sub-tables from the big ones
+
+createsubtable basetab_filename subtabname converting_awk_script [comment_for_summary]
+
+E.g. C<CreateSubTable $maqmapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "q${alqt}-mappers">
+
+=cut
+
+POD_FUNC
+
 # function to make filtered sub-tables from the big ones
 function CreateSubTable()
 {
@@ -741,6 +920,19 @@ function CreateSubTable()
     wc -l $subtab |awk '{ print "\t",$1 }' >> $summary
 }
 
+: <<'POD_FUNC'
+
+=item OneHeader(basetab_filename subtabname header_starts_with_word)
+
+Get rid of all but one header line after joining.
+
+E.g. C<CreateSubTable $maqmaptab "genes_with_major_UTR_lt2k" 'BEGIN ...$10}'> and then 
+            C<OneHeader $maqmaptab "genes_with_major_UTR_lt2k" "Name">
+
+=cut
+
+POD_FUNC
+
 # get rid of all but one header line after joining..
 function OneHeader()
 {
@@ -755,6 +947,19 @@ function OneHeader()
     grep -v ^${headerstart} $subtab >> $subtabtmp
     mv $subtabtmp $subtab
 }
+
+: <<'POD_FUNC'
+
+=item RUTRlenstats(tabname liblabel)
+
+Write custom R script for calculating mean and median UTR lengths and plotting their distributions and run it.
+Generates pdf plots.
+
+E.g. C<RUTRlenstats "genes_with_major_UTR_lt2k" "major splice site below 2 kbp">
+
+=cut
+
+POD_FUNC
 
 # R script for calculating mean and median UTR lengths and plotting their distributions
 function RUTRlenstats()
@@ -939,6 +1144,14 @@ else
     echo "Project has been brought up to date. ($rundate)" | tee -a $log
 fi
 exit
+
+: <<'POD_EOF'
+
+=back
+
+=cut
+
+POD_EOF
 
 # quality checks
 

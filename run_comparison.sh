@@ -3,20 +3,101 @@
 # Daniel Nilsson, 2009
 # daniel.nilsson@izb.unibe.ch, daniel.k.nilsson@gmail.com
 #
-# USAGE: run_compare.sh comparison.list [gene_feature_type(gene)]
+# POD documentation to follow throughout the file - use e.g. perldoc to read
 #
-# Expects: * an ordered comparison list
-#          * counts.tab files, named in the comparison list, as produced by the run_maq.sh part of the pipe
-#          * tag fastq files for libraries referenced (for lib sizes)
-#          * several of the other "sladdlampa"-scripts in $BINDIR
-#          * indirectly, bioPerl in the perl library path (and a perl 5.8.x interpreter at /usr/bin)
-#
-# Environment: Several bash environment variables influence the pipeline behaviour
-#            BINDIR           (~/install/bin)
-#            alqt             (30)  NOT respected yet
-#            single           (yes) NOT respected yet
-#            forceupdate      (no)
-#
+
+: <<'POD_INIT'
+
+=head1 NAME
+
+run_comparison.sh - compare SLT libraries, to turn single library results into comparative results
+
+=head1 AUTHOR
+
+Daniel Nilsson, daniel.nilsson@izb.unibe.ch, daniel.nilsson@ki.se, daniel.k.nilsson@gmail.com
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2009, 2010 held by Daniel Nilsson. The package is realesed for use under the Perl Artistic License.
+
+=head1 SYNOPSIS
+
+USAGE: C<run_compare.sh comparison.list [gene_feature_type(gene)]>
+
+=head1 DESCRIPTION
+
+Compare splice sites and expression levels between SLT libraries.
+
+Works on the output from F<run_maq.sh>, in particular F<counts.tab> files, 
+and a short ordered list file describing the libraries to compare.
+
+This is a make like pipeline implemented in bash, calling mostly perl
+and R programs. The need for (re)evaluation of a particular result is
+based on the existance and modification time of the result file in
+relation to the files needed to produce it. If you want to repeat an
+analysis, ensure that your new/modified input files are dated more
+recently than the particular analysis result you are interested in. Or
+invoke the pipeline with forceupdate=yes, but keep in mind that that
+will rerun everything.
+
+Please see the F<sladd_howto.pdf>/F<sladd_howto.odt> for more information.
+
+=head1 DEPENDENCIES
+
+The script expects:
+
+=over 4
+
+=item *
+
+an ordered comparison list
+
+=item *
+
+F<counts.tab> files, named in the comparison list, as produced by the F<run_maq.sh> part of the pipe
+
+=item *
+
+tag fastq files for libraries referenced (for lib sizes)
+
+=item *
+
+several of the other "sladdlampa"-scripts in $BINDIR
+
+=item *
+
+indirectly, bioPerl in the perl library path (and a perl 5.8.x interpreter at /usr/bin)
+
+=back
+
+=head1 SHELL ENVIRONMENT VARIABLES
+
+Several environment variables influence the pipeline behaviour.
+
+=over 4
+
+=item BINDIR [path (~/install/sladd)]          
+
+Directory where the rest of the SLADD pipeline lives.
+
+=item forceupdate [<yes|no> (no)]
+                     
+Force rerun of all analysis regardless of 
+modification times.
+
+=item usekegg [<yes|no> (no)] 
+
+Set to C<yes> to perform KEGG pathway specific analysis set. Note that the default is C<no>.
+
+=back
+
+=head1 OPTIONS AND ARGUMENTS
+
+=over 4
+
+=cut
+
+POD_INIT
 
 # check input environment variables and set unset ones to default values
 
@@ -29,13 +110,13 @@ fi
 
 export PERL5LIB=$PERL5LIB:$BINDIR
 
-# MAQ alignment quality cutoff
+# MAQ alignment quality cutoff NOT RESPECTED YET
 if [ -z "$alqt" ]
 then
     alqt=30
 fi
 
-# single mapping filtered files to be used for tab generation
+# single mapping filtered files to be used for tab generation NOT RESPECTED YET
 if [ -z "$single" ]
 then
     single=yes
@@ -46,20 +127,35 @@ then
     usekegg=no
 fi
 
-# set forceupdate=yes to run all available analyses, even if the file modification times advise against it 
-if [ -z "$forceupdate" ]
-then
-    forceupdate=no
-fi
+# uses pipelinefunk.sh for needsUpdate, registerFile etc.
+
+. pipelinefunk.sh
 
 # CALLED will contain a complete pathname for this script
 CALLED=$0
 
 if [ $# -lt 1 ]
 then
+	perldoc $CALLED
         echo "USAGE: ${0##*/} tabs_to_compare.ordered.list [gene_gff_type] [kegg_organism]"
         exit 1
 fi
+
+: <<'POD_ARG'
+
+=item first argument: tabs_to_compare.ordered.list
+
+first argument : F<tabs_to_compare.ordered.list> 
+
+File with ORDERED list of tabs to compare. See sladd_howto.pdf for an example.
+
+Read tablistfile: columns as follow.
+
+libname	tabfilename
+
+=cut
+
+POD_ARG
 
 tablistfile=$1 # file with ORDERED list of tabs to compare
 
@@ -68,13 +164,35 @@ then
     echo "Tab list file $tablistfile not found."
 fi
 
-# GFF feature type to associate tags with (gene, CDS, mRNA or such)
+: <<'POD_ARG'
+
+=item second argument, optional: genetype
+
+second argument, optional: genetype : GFF feature type to associate tags with (gene, CDS, mRNA or such).
+Default: gene.
+
+=cut
+
+POD_ARG
+
 genetype=gene
 
 if [ $# -eq 2 ]
 then
     genetype=$2
 fi
+
+: <<'POD_ARG'
+
+=item third argument, optional
+
+third argument: KEGG organism abbreviation for organism in question. Default: tbr.
+
+=back
+
+=cut
+
+POD_ARG
 
 # KEGG organism abbreviation for organism in question
 org=tbr
@@ -128,29 +246,6 @@ done
 #    ${libdesc[${libnr}]}=`echo $row |cut -f3 -d+`    
 #    libnr=$(( $libnr + 1 ))
 #done
-
-function needsUpdate()
-{
-    # needsUpdate(target, prereq [, prereq]*)
-    needsupdate="no"
-    
-    if [ "$forceupdate" = "yes" ] 
-    then
-	needsupdate="yes"
-    fi
-
-    target=$1;
-    
-    for prereq in ${@:2}
-    do
-	if [ $target -ot $prereq ] 
-	then
-	    needsupdate="yes"
-	fi
-   done
-    
-    [ "$needsupdate" = "yes" ]
-}
 
 updates=no
 
@@ -222,6 +317,25 @@ then
 
     updates=yes
 fi
+
+: <<'POD_FUNCTION'
+
+=head1 FUNCTIONS
+
+=over 4
+
+=item updateNormtab(mynormtab, sign)
+
+Function to update the norm tab, differs slightly for getting significant only (second arg).
+Second argument sign is yes or no, with significant only output produced when set to yes.
+
+E.g. C<updateNormtab $normsigntab yes>
+
+=back
+
+=cut
+
+POD_FUNCTION
 
 # function to update the norm tab, differs slightly for getting significant only (second arg)
 function updateNormtab()
@@ -363,47 +477,6 @@ SCATTERALL
 
     updates=yes
 fi
-
-function needsUpdateTimeBased()
-{
-    local file=$1
-    local timetoobsolete=$2
-        
-    local filestamp
-    local nowstamp=`date +%s`
-
-    local needsupdate="no"
-
-    if [ "$forceupdate" = "yes" ] 
-    then
-	needsupdate=yes
-    fi
-
-    if [ ! -w $file ]
-    then
-	needsupdate=yes
-    else
-	# stat is used for timestamp retrieval, and works slightly differently on OSX
-	os=`uname`
-	if [ $os = "Darwin" ]
-	then
-	# osx
-	    filestamp=`stat -f %c $file`
-	elif [ $os = "Linux" ] 
-	then
-	# linux 
-	    filestamp=`stat --format %Z $file`
-	fi
-
-	if [ $(( $nowstamp - $filestamp )) -gt $timetoobsolete ] 
-	then
-	    needsupdate=yes
-	fi
-    fi
-
-    [ "$needsupdate" = "yes" ]
-}
-
 
 if [ "$usekegg" = "yes" ] 
 then
@@ -601,6 +674,17 @@ else
     echo "Project has been brought up to date. ($rundate)"
 fi
 exit
+
+: <<'POD_FILES'
+
+=head1 FILES
+
+Please see the sladd_howto.pdf for file descriptions.
+
+=cut
+
+POD_FILES
+
 
 # scatterplots, pairwise
 
