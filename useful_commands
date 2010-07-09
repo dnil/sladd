@@ -1,0 +1,696 @@
+# general preparation
+cat Size_2[456789]*fastq Size_3[0123456789]* Size_4[0123456789]* Size_5[0123456789]* Size_6[0123456789]* Size_7[0123456789]* > Size24andup.fastq
+
+grep \> TbruceiGenomic_TriTrypDB-1.0.fasta |sed -e 's/>//; s/psu|//;'|cut -f 1 -d' ' > fastalist
+
+for seq in `cat fastalist` ; do ~/install/bin/fasta_header_grep.pl $seq TbruceiGenomic_TriTrypDB-1.0.fasta > $seq.fasta; done
+
+for seq in `cat fastalist` ; do grep $seq Tbrucei_TriTrypDB-1.0.gff > $seq.TriTrypDB-1.0.gff; done
+
+grep \> TbruceiGenomic_TriTrypDB-1.0.fasta |cut -f2,5 -d\| |perl -ne "s/\ \|\ length=/\t/;print" > TbruceiGenomic_TriTrypDB-1.0.sizes
+
+for lib in 1 2 3 4 ; do for file in *GDG-${lib}_*bed ; do echo $file; ../../install/bin/bed_to_gff.pl -s ../../tb/fasteris.chr.sizes -l fasteris_GDG-$lib -f fasteris_GDG-$lib < $file > gff/$file.gff3; done ; done
+
+
+#running bowtie
+../../install/bowtie-0.9.9.2/bowtie-build TbruceiGenomic_TriTrypDB-1.0.fasta tb_ttdb_1			 
+
+../install/bowtie-0.9.9.2/bowtie tb_ttdb_1 ../fasteris/GDG-2/Size24andup.fastq > tt_ttdb_1_gdg-2_24up.bowtie
+
+for lib in 1 2 3 4; do ../install/bowtie-0.9.9.2/bowtie -m 1 tb_ttdb_1 ../fasteris/GDG-${lib}/Size24andup.fastq > tt_ttdb_1_gdg-${lib}_24up.m1.bowtie
+
+
+#running maq 
+for file in GDG-*/Size24andup.fastq ; do maq fastq2bfq $file $file.bfq; done
+
+for file in GDG-*/Size24andup.fastq.bfq ; do maq map -n 2 $file.tb_ttdb_1.maq.map ../tb/TbruceiGenomic_TriTrypDB-1.0.bfa $file > $file.tb_ttdb_1.maq.log; done
+
+for lib in 1 2 3 4 ; do for file in GDG-${lib}/Size24andup.fastq.bfq.tb_ttdb_1.maq.map ; do maq mapview $file > GDG-${lib}.size24andup.tb_ttdb_1.maq.map.txt ; done ; done
+
+for lib in 1 2 3 4 ; do for file in GDG-${lib}.Size24andup.tb427es.maq.map ; do maq mapview $file > $file.txt ; done ; done
+
+
+# gffconvert bowtie
+~/install/bin/bowtie_to_gff.pl -l bowtie_gdg-4 <tt_ttdb_1_gdg-4_24up.bowtie > tt_ttdb_1_gdg-4_24up.bowtie.gff
+
+grep Tb927_10_v4 tt_ttdb_1_gdg-4_24up.bowtie.gff > Tb927_10_v4.tt_ttdb_1_gdg-4_24up.bowtie.gff
+
+
+# gffconvert maq 
+for lib in 1 2 3 4 ; do ../install/bin/maqmaptxt2gff.pl -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.size24andup.tb_ttdb_1.maq.map.txt > GDG-${lib}.size24andup.tb_ttdb_1.maq.gff ; done
+
+maqmap$ for lib in 1 2 3 4 ; do echo > maq-mapping-gdg-${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.TriTrypDB-1.0.gff -s ../$seq.fasta -t $seq.GDG-${lib}.size24andup.tb_ttdb_1.maq.gff3 -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}.maq.map.gff >> maq-mapping-gdg-${lib}.log; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.crunch.gff ; done ; done
+
+# maq - counts and refined gffs
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.counts.gff ; done ; done
+
+for lib in 1 2 3 4 ; do echo > tb_ttdb_1.GDG-${lib}_24up.maq.map.counts.tab; for seq in `cat ../fastalist` ; do echo $seq >> tb_ttdb_1.GDG-${lib}_24up.maq.map.counts.tab; sort -k2n,2n $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.counts.tab >> tb_ttdb_1.GDG-${lib}_24up.maq.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.gff -s $seq.fasta -f nucleotide_match -o $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.tab ; done ; done
+
+# maq - counts, normalised
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.tab ; done ; done
+
+# bowtie -  counts and refined gffs
+
+../install/bin/per_gene_splicesite_info.pl -s TbruceiGenomic_TriTrypDB-1.0.chr10.fasta -t Tb927_10_v4.tt_ttdb_1_gdg-4_24up.bowtie.gff -g Tbrucei_TriTrypDB-1.0.chr10.gff 
+
+~/install/bin/per_gene_splicesite_info.pl -g TP26M21-2a.Tbrucei_TriTrypDB-1.0.gff -s TP26M21-2a.fasta -t TP26M21-2a.tb_ttdb_1_gdg-4_24up.bowtie.gff -f nucleotide_match -o TP26M21-2a.Tbrucei_TriTrypDB-1.0.tb_ttdb_1_gdg-4_24up.bowtie.map.gff
+
+for seq in `cat fastalist` ; do grep $seq tb_ttdb_1_gdg-4_24up.bowtie.gff > $seq.tb_ttdb_1_gdg-4_24up.bowtie.gff; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do grep $seq tb_ttdb_1_gdg-${lib}_24up.bowtie.gff3 > $seq.tb_ttdb_1_gdg-${lib}_24up.bowtie.gff3 ; done ; done
+
+for seq in `cat fastalist` ; do echo $seq; ~/install/bin/per_gene_splicesite_info.pl -g $seq.TriTrypDB-1.0.gff -s $seq.fasta -t $seq.tb_ttdb_1_gdg-4_24up.bowtie.gff -f nucleotide_match -o $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-4_24up.bowtie.map.gff; done > mapping-bowtie-gdg-4.log
+
+for lib in 1 2 3 4 ; do echo > bowtie-mapping-gdg-${lib}.log; for seq in `cat fastalist` ; do echo $seq >> bowtie-mapping-gdg-${lib}.log; ~/install/bin/per_gene_splicesite_info.pl -g $seq.TriTrypDB-1.0.gff -s $seq.fasta -t $seq.tb_ttdb_1_gdg-${lib}_24up.bowtie.gff -f nucleotide_match -o $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.gff >> bowtie-mapping-gdg-${lib}.log; done ; done
+
+for lib in 1 2 3 4 ; do echo > bowtie-mapping-gdg-${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.TriTrypDB-1.0.gff -s ../$seq.fasta -t $seq.tb_ttdb_1_gdg-${lib}_24up.bowtie.gff3 -f bowtiematchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}.bowtie.map.gff >> bowtie-mapping-gdg-${lib}.log; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -g $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.gff -s $seq.fasta -f nucleotide_match -o $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.gff -s $seq.fasta -f nucleotide_match -o $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do echo > TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.tab; for seq in `cat fastalist` ; do echo $seq >> TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.tab; sort -k2n,2n $seq.TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.tab >> TriTrypDB-1.0.tb_ttdb_1_gdg-${lib}_24up.bowtie.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do echo > bowtie-mapping-gdg-${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.TriTrypDB-1.0.gff -s ../$seq.fasta -t $seq.tb_ttdb_1_gdg-${lib}_24up.bowtie.gff3 -f bowtiematchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}.bowtie.map.gff >> bowtie-mapping-gdg-${lib}.log; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.tb_ttdb_1.GDG${lib}.bowtie.map.gff -s ../$seq.fasta -f  bowtiematchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}_24up.bowtie.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.bowtie.map.gff -s ../$seq.fasta -f  bowtiematchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}_24up.bowtie.map.counts.gff ; done ; done
+
+
+# maq and bowtie to gff, with (some) gbrowse gff3 constraint awareness
+
+for lib in 1 2 3 4 ; do ../../install/bin/maqmaptxt2gff.pl -s ../TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.size24andup.tb_ttdb_1.maq.map.txt > GDG-${lib}.size24andup.tb_ttdb_1.maq.gff ; done
+
+for lib in 1 2 3 4; do sort -k3,4 tb_ttdb_1_gdg-${lib}_24up.bowtie > tb_ttdb_1_gdg-${lib}_24up.sort.bowtie; done
+
+for lib in 1 2 3 4 ; do ~/install/bin/bowtie_to_gff.pl -s ../TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG$lib -f bowtiematchGDG$lib <tb_ttdb_1_gdg-${lib}_24up.bowtie > tb_ttdb_1_gdg-${lib}_24up.bowtie.gff ; done
+
+
+#comparing tabs
+
+./bin/compare_counts_tabs.pl -o gdg-2_vs_gdg-3.ttdb_1_0.bowtie.map.counts.compare -M 635577 -N 1190042 TriTrypDB-1.0.tb_ttdb_1_gdg-2_24up.bowtie.map.counts.tab TriTrypDB-1.0.tb_ttdb_1_gdg-3_24up.bowtie.map.counts.tab
+
+./bin/compare_counts_tabs.pl -o gdg-1_vs_gdg-2.ttdb_1_0.bowtie.map.counts.compare -M 797357 -N 635577 TriTrypDB-1.0.tb_ttdb_1_gdg-1_24up.bowtie.map.counts.tab TriTrypDB-1.0.tb_ttdb_1_gdg-2_24up.bowtie.map.counts.tab
+
+./bin/compare_counts_tabs.pl -o gdg-4_vs_gdg-1.ttdb_1_0.bowtie.map.counts.compare -M 928381 -N 797357 TriTrypDB-1.0.tb_ttdb_1_gdg-4_24up.bowtie.map.counts.tab TriTrypDB-1.0.tb_ttdb_1_gdg-1_24up.bowtie.map.counts.tab
+
+
+# counting hits 
+
+cat tb_ttdb_1.GDG*_24up.maq.map.counts.tab.nocount.gdg* |sort |uniq -c |sort|grep " 4 " |awk '{print $2}' > tb_ttdb_1.24up.maq.map.counts.tab.nocount.all4.list
+
+grep -w -f tb_ttdb_1.24up.maq.map.counts.tab.nocount.all4.list tb_ttdb_1.GDG-4_24up.maq.map.counts.tab >tb_ttdb_1.24up.maq.map.counts.tab.nocount.all4.tab
+
+cat missing_in_N_bowtie|sort|grep " 4 " |awk '{print $2}' > missing_in_all_bowtie.list
+
+cat missing_in_all_bowtie.list ../maqmap/tb_ttdb_1.24up.maq.map.counts.tab.nocount.all4.list |sort |uniq -c|sort |grep -c " 2 "
+
+
+# table count extractions
+
+for lib in 1 2 3 4 ; do echo GDG-${lib} > tb_ttdb_1.GDG${lib}.below_2kbp_major_with_count.tab ; for seq in `cat ../fastalist`; do awk '($4 > 0 && $9 < 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}' $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.tab >> tb_ttdb_1.GDG${lib}.below_2kbp_major_with_count.tab; done; done
+
+for lib in 1 2 3 4 ; do echo GDG-${lib} > tb_ttdb_1.GDG${lib}.major_over_2kbp.tab ; for seq in `cat ../fastalist`; do awk '($9 > 2000) {print}' $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.tab >> tb_ttdb_1.GDG${lib}.major_over_2kbp.tab; done; done
+
+for lib in 1 2 3 4 ; do echo GDG-${lib} > tb_ttdb_1.GDG${lib}.shortest_over_2kbp.tab ; for seq in `cat ../fastalist`; do awk '($11 > 2000) {print}' $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.tab >> tb_ttdb_1.GDG${lib}.shortest_over_2kbp.tab; done; done
+
+for lib in 1 2 3 4 ; do echo GDG-${lib} > tb_ttdb_1.GDG${lib}.all_internal.tab ; for seq in `cat ../fastalist`; do awk '($4 > 0 && $12 < 0) {print}' $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.tab >> tb_ttdb_1.GDG${lib}.all_internal.tab; done; done
+
+for lib in 1 2 3 4 ; do echo GDG-${lib} > tb_ttdb_1.GDG${lib}.major_site_internal.tab ; for seq in `cat ../fastalist`; do awk '($4 > 0 && $9 < 0) {print}' $seq.tb_ttdb_1.GDG${lib}_24up.maq.map.counts.tab >> tb_ttdb_1.GDG${lib}.major_site_internal.tab; done; done
+
+
+# R
+
+gdg4<-read.table("tb_ttdb_1.GDG4.below_2kbp_major_with_count.tab", header = TRUE, sep = "\t");
+
+cor.test(gdg4$Count, gdg4$fpUTRlen)
+
+gdg4utrlen <- rep(gdg4$fpUTRlen,gdg4$Count)
+
+pdf("gdg4_major_fpUTRlen.pdf")
+hist(gdg4utrlen,100,main="GDG-4 major splice site 5'UTR length, transcript counts")
+dev.off()
+
+pdf("gdg4_major_fpUTRlen_genes.pdf")
+hist(gdg4$fpUTRlen,100,main="GDG-4 major splice site 5'UTR length, gene count")
+dev.off()
+
+
+# tb427es -- maq map
+
+maq fasta2bfa tb427es.fasta tb427es.bfa
+
+for lib in 1 2 3 4; do for file in ../../fasteris/GDG-${lib}/Size24andup.fastq.bfq ; do maq map -n 2 GDG-${lib}.`basename $file .fastq.bfq`.tb427es.maq.map ../tb427es.bfa $file 2> GDG-${lib}.`basename $file .fastq.bfq`.tb427es.maq.log; done; done
+
+grep match_data2mapping *log
+
+grep \> tb427es.fasta |sed -e 's/>//;'|cut -f 1 -d' ' > fastalist
+
+for seq in `cat fastalist` ; do grep $seq tb427es.gff |grep -v ^\> > $seq.tb427.gff; done
+
+../install/bin/count_fasta_seq_len.pl < tb427es.fasta > tb427es.sizes
+
+for lib in 1 2 3 4 ; do ../../install/bin/maqmaptxt2gff.pl -s ../tb427es.sizes -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.Size24andup.tb427es.maq.map.txt > GDG-${lib}.Size24andup.tb427es.maq.gff ; done
+
+for lib in 1 2 3 4 ; do echo > maq-mapping-GDG-${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.tb427.gff -s ../$seq.fasta -t $seq.GDG-${lib}.Size24andup.tb427es.maq.gff -f maqmatchGDG${lib} -c CDS -o $seq.tb427es.GDG${lib}.maq.map.gff >> maq-mapping-GDG-${lib}.log ; done ; done
+
+ for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.tb427es.GDG${lib}.maq.map.gff -s ../$seq.fasta -c CDS -f maqmatchGDG${lib} -o $seq.tb427es.GDG-${lib}_24up.maq.map.crunch.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.tb427es.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -c CDS -o $seq.tb427es.GDG${lib}_24up.maq.map.counts.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.tb427es.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -c CDS -o $seq.tb427es.GDG${lib}_24up.maq.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do echo > tb427es.GDG${lib}_24up.maq.map.counts.tab; for seq in `cat ../fastalist` ; do echo $seq >> tb427es.GDG${lib}_24up.maq.map.counts.tab; sort -k2n,2n $seq.tb427es.GDG${lib}_24up.maq.map.counts.tab >> tb427es.GDG${lib}_24up.maq.map.counts.tab ; done ; done
+
+liba=4; libb=1; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.maq.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb427es.GDG${liba}_24up.maq.map.counts.tab tb427es.GDG${libb}_24up.maq.map.counts.tab
+
+liba=1; libb=2; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.maq.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb427es.GDG${liba}_24up.maq.map.counts.tab tb427es.GDG${libb}_24up.maq.map.counts.tab
+
+liba=2; libb=3; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.maq.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb427es.GDG${liba}_24up.maq.map.counts.tab tb427es.GDG${libb}_24up.maq.map.counts.tab
+
+# tb427es -- bowtie single mappers
+
+../../install/bowtie-0.9.9.2/bowtie-build ../tb427es.fasta tb427es
+
+for lib in 1 2 3 4; do ~/install/bowtie-0.9.9.2/bowtie -m 1 tb427es ~/fasteris/GDG-${lib}/Size24andup.fastq > tb427es.GDG${lib}_24up.m1.bowtie; done
+
+for lib in 1 2 3 4; do sort -k3,4 tb427es.GDG${lib}_24up.m1.bowtie > tb427es.GDG${lib}_24up.m1.bowtie.sort; done
+
+for lib in 1 2 3 4 ; do ~/install/bin/bowtie_to_gff.pl -s ../tb427es.sizes -l GDG$lib -f bowtiematchGDG$lib < tb427es.GDG${lib}_24up.m1.bowtie.sort > tb427es.GDG${lib}_24up.m1.bowtie.gff ; done
+
+for lib in 1 2 3 4 ; do echo > bowtie-mapping-GDG-${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.tb427.gff -s ../$seq.fasta -t $seq.GDG${lib}_24up.m1.bowtie.gff -f bowtiematchGDG${lib} -c CDS -o $seq.GDG${lib}.m1.bowtie.map.gff >> bowtie-mapping-GDG-${lib}.log ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.GDG${lib}.m1.bowtie.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -c CDS -o $seq.GDG${lib}_24up.bowtie.map.crunch.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.GDG${lib}.m1.bowtie.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -c CDS -o $seq.GDG${lib}_24up.m1.bowtie.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.GDG${lib}.m1.bowtie.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -c CDS -o $seq.GDG${lib}_24up.m1.bowtie.map.counts.gff ; done ; done
+
+for lib in 1 2 3 4 ; do echo > tb427es.GDG${lib}_24up.m1.bowtie.map.counts.tab; for seq in `cat ../fastalist` ; do echo $seq >> tb427es.GDG${lib}_24up.m1.bowtie.map.counts.tab; sort -k2n,2n $seq.GDG${lib}_24up.m1.bowtie.map.counts.tab >> tb427es.GDG${lib}_24up.m1.bowtie.map.counts.tab ; done ; done
+
+liba=4; libb=1; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.m1.bowtie.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb427es.GDG${liba}_24up.m1.bowtie.map.counts.tab tb427es.GDG${libb}_24up.m1.bowtie.map.counts.tab
+
+liba=1; libb=2; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.m1.bowtie.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb427es.GDG${liba}_24up.m1.bowtie.map.counts.tab tb427es.GDG${libb}_24up.m1.bowtie.map.counts.tab
+
+liba=2; libb=3; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.m1.bowtie.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb427es.GDG${liba}_24up.m1.bowtie.map.counts.tab tb427es.GDG${libb}_24up.m1.bowtie.map.counts.tab
+
+# tb -- bowtie single mappers
+
+for lib in 1 2 3 4; do ../install/bowtie-0.9.9.2/bowtie -m 1 tb_ttdb_1 ../fasteris/GDG-${lib}/Size24andup.fastq > tt_ttdb_1_gdg-${lib}_24up.m1.bowtie
+
+for lib in 1 2 3 4; do sort -k3,4 tb_ttdb_1_gdg-${lib}_24up.m1.bowtie > tb_ttdb_1_gdg-${lib}_24up.m1.sort.bowtie; done
+
+for lib in 1 2 3 4 ; do ~/install/bin/bowtie_to_gff.pl -s ../TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG$lib -f bowtiematchGDG$lib <tb_ttdb_1_gdg-${lib}_24up.m1.sort.bowtie > tb_ttdb_1.GDG${lib}_24up.m1.bowtie.gff ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do grep $seq tb_ttdb_1.GDG${lib}_24up.m1.bowtie.gff > $seq.tb_ttdb_1.GDG{$lib}_24up.m1.bowtie.gff; done; done
+
+for lib in 1 2 3 4 ; do echo > bowtie-mapping-m1-GDG${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.TriTrypDB-1.0.gff -s ../$seq.fasta -t $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.gff -f bowtiematchGDG${lib} -o $seq.tb_ttdb_1.GDG${lib}.m1.bowtie.map.gff >> bowtie-mapping-m1-GDG${lib}.log; done ; done
+
+for lib in 1 2 3 4 ; do echo > bowtie-mapping-m1-GDG${lib}.log; for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.TriTrypDB-1.0.gff -s ../$seq.fasta -t $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.gff -f bowtiematchGDG${lib} -c gene -o $seq.tb_ttdb_1.GDG${lib}.m1.bowtie.map.gff >> bowtie-mapping-m1-GDG${lib}.log ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.m1.bowtie.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -c gene -o $seq.tb_ttdb_1.GDG${lib}_24up.bowtie.map.crunch.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.tb_ttdb_1.GDG${lib}.m1.bowtie.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -c gene -o $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/tagged_gff_to_counts.pl -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -g $seq.tb_ttdb_1.GDG${lib}.m1.bowtie.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -c gene -o $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.gff ; done ; done
+
+for lib in 1 2 3 4 ; do echo > tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab; for seq in `cat ../fastalist` ; do echo $seq >> tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab; sort -k2n,2n $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab >> tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab ; done ; done
+
+liba=4; libb=1; ~/install/bin/compare_counts_tabs.pl -o GDG${liba}_vs_GDG${libb}.tb_ttdb_1.m1.bowtie.map.counts.compare -M `grep GDG-${liba} ../24up.sizecount |cut -f2` -N `grep GDG-${libb} ../24up.sizecount |cut -f2` tb_ttdb_1.GDG${liba}_24up.m1.bowtie.map.counts.tab tb_ttdb_1.GDG${libb}_24up.m1.bowtie.map.counts.tab
+
+method=maq; for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.$method.map.gff -s ../$seq.fasta -f ${method}matchGDG${lib} -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -c gene -o $seq.tb_ttdb_1.GDG${lib}_24up.${method}.map.crunch.gff3 ; done ; done
+
+method=m1.bowtie; for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.${method}.map.gff -s ../$seq.fasta -f bowtiematchGDG${lib} -N `grep GDG-${lib} ../24up.sizecount |cut -f2` -c gene -o $seq.tb_ttdb_1.GDG${lib}_24up.${method}.map.crunch.gff3 ; done ; done
+
+
+# extract splicesites
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/extract_splicesites.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -1 -m -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.once.major.splicesites ; done ; done
+
+for lib in 1 2 3 4 ; do echo > tb_ttdb_1.GDG-${lib}_24up.maq.map.once.major.splicesites ; for seq in `cat ../fastalist` ; do cat $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.once.major.splicesites >> tb_ttdb_1.GDG-${lib}_24up.maq.map.once.major.splicesites; done ; done
+
+../../install/weblogo/seqlogo -f Tb927_01_v4.tb_ttdb_1.GDG-1_24up.maq.map.once.splicesites -h 8 -w 26 -n -Y -c -k1 -s -150 -d 1 -t "Consensus splice site" -F PDF -o Tb927_01_v4.tb_ttdb_1.GDG-1_24up.maq.map.once.splicesites
+
+for lib in 1 2 3 4 ; do ../../install/weblogo/seqlogo -f tb_ttdb_1.GDG-${lib}_24up.maq.map.once.major.splicesites -h 8 -w 26 -n -Y -c -k1 -s -150 -d 1 -t "Consensus splice site once major GDG-${lib}" -F PDF -o tb_ttdb_1.GDG-${lib}_24up.maq.map.once.major.splicesites.out; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/extract_splicesites.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -m -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.major.splicesites ; done ; done
+
+for lib in 1 2 3 4 ; do ../../install/weblogo/seqlogo -f tb_ttdb_1.GDG-${lib}_24up.maq.map.major.splicesites -h 8 -w 26 -n -Y -c -k1 -s -150 -d 1 -t "Consensus splice site major GDG-${lib}" -F PDF -o tb_ttdb_1.GDG-${lib}_24up.maq.map.major.splicesites.out; done
+
+for lib in 1 2 3 4 ; do echo > tb_ttdb_1.GDG-${lib}_24up.maq.map.internal.splicesites ; for seq in `cat ../fastalist` ; do cat $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.major.splicesites >> tb_ttdb_1.GDG-${lib}_24up.maq.map.major.splicesites; done ; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/extract_splicesites.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -E -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.internal.splicesites ; done ; done
+
+for lib in 1 2 3 4; do echo GDG-$lib; sort tb_ttdb_1.GDG-${lib}_24up.maq.map.internal.splicesites |uniq |wc -l; done
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do ~/install/bin/extract_splicesites.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}_24up.maq.map.splicesites ; done ; done
+
+for lib in 1 2 3 4 ; do ../../install/weblogo/seqlogo -f tb_ttdb_1.GDG-${lib}_24up.maq.map.once.splicesites -h 8 -w 26 -n -Y -c -k1 -s -150 -d 1 -t "Consensus splice site once GDG-${lib}" -F PDF -o tb_ttdb_1.GDG-${lib}_24up.maq.map.once.splicesites.out; done
+
+lib=GDG-7.Size23andup; for seq in `cat Tbrucei_TriTrypDB-1.1.fastalist`; do ../../src/sladd/extract_splicesites.pl -g ${lib}*maqmap.${seq}.gene.gff -s Tbrucei_TriTrypDB-1.1.${seq}.fasta -f maqmatch${lib%%.*} -1 -m -c mRNA -o $lib.maqmap.$seq.major.once.splicesites.out; done
+
+echo -n > $lib.maqmap.major.once.splicesites.out; for seq in `cat Tbrucei_TriTrypDB-1.1.fastalist`; do cat $lib.maqmap.$seq.major.once.splicesites.out >> $lib.maqmap.major.once.splicesites.out
+
+../../install/weblogo/seqlogo -f $lib.maqmap.major.once.splicesites.out -h 8 -w 26 -n -Y -c -k1 -s -150 -d 1 -t "Consensus splice site major once ${lib%%.*}" -F PDF -o $lib.maqmap.$seq.major.once.splicesites.out
+
+
+# randomised trials for saturation curves
+
+for lib in 1 2 3 4 ; do grep -c ^@ ../fasteris/GDG-$lib/Size24andup.fastq; done
+
+for lib in 1 2 3 4 ; do for count in 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo GDG$lib - $count; ../install/bin/randomly_pick_fastq.pl -n $count -N `grep -c ^@ ../fasteris/GDG-${lib}/Size24andup.fastq` -o GDG-${lib}.Size24andup.rnd${count}.fastq /Users/daniel/fasteris/GDG-$lib/Size24andup.fastq ; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo map GDG${lib} - $count; maq fastq2bfq GDG-${lib}.Size24andup.rnd${count}.fastq GDG-${lib}.Size24andup.rnd${count}.bfq; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo map GDG$lib - $count; maq map -n 2 GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map ../tb/TbruceiGenomic_TriTrypDB-1.0.bfa GDG-${lib}.Size24andup.rnd${count}.bfq > GDG-${lib}.rnd${count}.maqmap.log; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo map GDG$lib - $count; maq mapview GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map > GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.txt; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo map GDG$lib - $count; ~/install/bin/maqmaptxt2gff.pl -s ~/tb/TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.txt > GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff ; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do for seq in `cat ~/tb/fastalist` ; do grep $seq GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff > ${seq}.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff ; done; done; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do for seq in `cat ~/tb/fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ~/tb/$seq.TriTrypDB-1.0.gff -s ~/tb/$seq.fasta -t $seq.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.gene.gff  ; done ; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do for seq in `cat ~/tb/fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.gene.gff -s ~/tb/$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab ; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo > tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab; for seq in `cat ~/tb/fastalist` ; do echo $seq >> tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab; sort -k2n,2n $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab ; done ; done; done
+
+echo "Lib Rnd Count"> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k; for lib in 1 2 4 3; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k; awk 'BEGIN {tick = 0} ($4>0 && $11 < 2000) {tick=tick+1} END {print " ",tick}' tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k; done; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000 ; do echo GDG$lib - $count; ../install/bin/randomly_pick_fastq.pl -n $count -N `grep -c ^@ ../fasteris/GDG-${lib}/Size24andup.fastq` -o GDG-${lib}.Size24andup.rnd${count}.fastq /Users/daniel/fasteris/GDG-$lib/Size24andup.fastq ; done ; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000 ; do echo GDG$lib - $count; maq fastq2bfq GDG-${lib}.Size24andup.rnd${count}.fastq GDG-${lib}.Size24andup.rnd${count}.bfq; done ; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000 ; do echo GDG$lib - $count; maq map -n 2 GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map ../tb/TbruceiGenomic_TriTrypDB-1.0.bfa GDG-${lib}.Size24andup.rnd${count}.bfq > GDG-${lib}.rnd${count}.maqmap.log; done ; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000 ; do echo GDG$lib - $count; maq mapview GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map > GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.txt; done ; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000; do echo map GDG$lib - $count; ~/install/bin/maqmaptxt2gff.pl -s ~/tb/TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.txt > GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff ; done ; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000; do for seq in `cat ~/tb/fastalist` ; do grep $seq GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff > ${seq}.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff ; done; done; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000;do for seq in `cat ~/tb/fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ~/tb/$seq.TriTrypDB-1.0.gff -s ~/tb/$seq.fasta -t $seq.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.gene.gff  ; done ; done ; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000;do for seq in `cat ~/tb/fastalist` ; do ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.gene.gff -s ~/tb/$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab ; done ; done ; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ;do for seq in `cat ~/tb/fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff -s ~/tb/$seq.fasta -f maqmatchGDG${lib} -o $seq.GDG-${lib}.rnd${count}.maq.map.crunch.gff ; done ; done; done
+
+for lib in 3 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000;do echo > tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab; for seq in `cat ~/tb/fastalist` ; do echo $seq >> tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab; sort -k2n,2n $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab ; done ; done; done
+
+echo "Lib Rnd Count"> tb_ttdb_1.rnd.genes_with_counts; for lib in 1 2 4 3; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ; do echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.genes_with_counts; awk 'BEGIN {tick = 0} ($4 > 0) {tick=tick+1} END {print " ",tick}' tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.rnd.genes_with_counts; done; done
+
+for lib in 3  ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000; do echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.genes_with_counts; awk 'BEGIN {tick = 0} ($4 > 0) {tick=tick+1} END {print " ",tick}' tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.rnd.genes_with_counts; done; done
+
+for lib in 3  ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000; do echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k; awk 'BEGIN {tick = 0} ($4>0 && $11 < 2000) {tick=tick+1} END {print " ",tick}' tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k; done; done
+
+for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ;do echo > GDG-${lib}.rnd${count}.maq.map.crunch.gff ; for seq in `cat ~/tb/fastalist` ; do grep maqmatch $seq.GDG-${lib}.rnd${count}.maq.map.crunch.gff >> GDG-${lib}.rnd${count}.maq.map.crunch.gff; done ; done ; done
+
+echo "Lib Rnd Count"> tb_ttdb_1.rnd.crunched_splicesites; for lib in 1 2 3 4 ; do for count in 1000 5000 25000 50000 100000 150000 200000 250000 300000 350000 400000 450000 500000 ;  do echo -n "GDG-${lib} ${count} " >> tb_ttdb_1.rnd.crunched_splicesites; grep -c maqmatch GDG-${lib}.rnd${count}.maq.map.crunch.gff >> tb_ttdb_1.rnd.crunched_splicesites; done; done
+
+lib=3 ; for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000; do for seq in `cat ~/tb/fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff -s ~/tb/$seq.fasta -f maqmatchGDG${lib} -o $seq.GDG-${lib}.rnd${count}.maq.map.crunch.gff ; done ; done
+
+lib=3 ; for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000; do echo > GDG-${lib}.rnd${count}.maq.map.crunch.gff ; for seq in `cat ~/tb/fastalist` ; do grep maqmatch $seq.GDG-${lib}.rnd${count}.maq.map.crunch.gff >> GDG-${lib}.rnd${count}.maq.map.crunch.gff; done ; done
+
+lib=3 ; for count in 550000 600000 650000 700000 750000 800000 850000 900000 950000 1000000;  do echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.crunched_splicesites; grep -c maqmatch GDG-${lib}.rnd${count}.maq.map.crunch.gff >> tb_ttdb_1.rnd.crunched_splicesites; done
+
+for lib in 4 ; do for count in 550000 600000 650000 700000 750000 800000 850000 900000 ; do echo GDG$lib - $count; ../install/bin/randomly_pick_fastq.pl -n $count -N `grep -c ^@ ../fasteris/GDG-${lib}/Size24andup.fastq` -o GDG-${lib}.Size24andup.rnd${count}.fastq /Users/daniel/fasteris/GDG-$lib/Size24andup.fastq ; done ; done ; for lib in 1 ; do for count in 550000 600000 650000 700000 750000 ; do echo GDG$lib - $count; ../install/bin/randomly_pick_fastq.pl -n $count -N `grep -c ^@ ../fasteris/GDG-${lib}/Size24andup.fastq` -o GDG-${lib}.Size24andup.rnd${count}.fastq /Users/daniel/fasteris/GDG-$lib/Size24andup.fastq ; done ; done ; for lib in 1 ; do for count in 550000 600000; do echo GDG$lib - $count; ../install/bin/randomly_pick_fastq.pl -n $count -N `grep -c ^@ ../fasteris/GDG-${lib}/Size24andup.fastq` -o GDG-${lib}.Size24andup.rnd${count}.fastq /Users/daniel/fasteris/GDG-$lib/Size24andup.fastq ; done ; done ;
+
+lib=4 ; for count in 550000 600000 650000 700000 750000 800000 850000 900000 ; do
+echo GDG$lib - $count; maq fastq2bfq GDG-${lib}.Size24andup.rnd${count}.fastq GDG-${lib}.Size24andup.rnd${count}.bfq; maq map -n 2 GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map ../tb/TbruceiGenomic_TriTrypDB-1.0.bfa GDG-${lib}.Size24andup.rnd${count}.bfq > GDG-${lib}.rnd${count}.maqmap.log; mapview GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map > GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.txt; ~/install/bin/maqmaptxt2gff.pl -s ~/tb/TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.txt > GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff ; for seq in `cat ~/tb/fastalist` ; do grep $seq GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff > ${seq}.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff ; ~/install/bin/per_gene_splicesite_info.pl -g ~/tb/$seq.TriTrypDB-1.0.gff -s ~/tb/$seq.fasta -t $seq.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.gene.gff  ;  ~/install/bin/tagged_gff_to_counts_tab.pl -g $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.gene.gff -s ~/tb/$seq.fasta -f maqmatchGDG${lib} -o $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab ; done ; do echo > tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab; for seq in `cat ~/tb/fastalist` ; do echo $seq >> tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab; sort -k2n,2n $seq.tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab ; done ; 
+for seq in `cat ~/tb/fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.GDG-${lib}.rnd${count}.tb_ttdb_1.maq.map.gff -s ~/tb/$seq.fasta -f maqmatchGDG${lib} -o $seq.GDG-${lib}.rnd${count}.maq.map.crunch.gff ; done ; echo > GDG-${lib}.rnd${count}.maq.map.crunch.gff ; for seq in `cat ~/tb/fastalist` ; do grep maqmatch $seq.GDG-${lib}.rnd${count}.maq.map.crunch.gff >> GDG-${lib}.rnd${count}.maq.map.crunch.gff; done ; echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.crunched_splicesites; grep -c maqmatch GDG-${lib}.rnd${count}.maq.map.crunch.gff >> tb_ttdb_1.rnd.crunched_splicesites; done 
+echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.genes_with_counts; awk 'BEGIN {tick = 0} ($4 > 0) {tick=tick+1} END {print " ",tick}' tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.rnd.genes_with_counts;
+echo -n "GDG-${lib} ${count}" >> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k; awk 'BEGIN {tick = 0} ($4>0 && $11 < 2000) {tick=tick+1} END {print " ",tick}' tb_ttdb_1.GDG-${lib}.rnd${count}.maq.map.counts.tab >> tb_ttdb_1.rnd.genes_with_counts_and_shortest_lt2k ;
+done; done;
+
+### compare to old UTR predictions
+
+# cd ~/tb/smrun_2009-05-28-18h/*/utrs_gff
+
+for file in *utrs.gff ; do grep 5pUTR $file |awk '($7 == "-") {print $5, $7} ($7 == "+") { print $4, $7 }' > $file.sladdlist ; done
+
+cd ~/tb/bowtiemap; mkdir sladdlist
+
+for lib in 1 2 3 4 ; do for seq in `cat ../fastalist` ; do grep -v "VSG\|pseudogene\|ESAG\|RHS\|retrotransposon\|degenerate\|unlikely\|frameshift\|ORF1\|ORF2\|pse\|ingi\|truncated" $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.uorf | awk '($4 > 0) { print $11, $3 }' > sladdlist/$seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.majorsladdlist; done ; done
+# should really go over this again with mRNA features.. "spliced" rRNA, snoRNA, tRNA are at least a minor source of error.
+
+cd ~/tb/bowtiemap/sladdlist
+
+for lib in 1 2 3 4 ; do for seq in `cat ~/tb/fastalist` ; do echo GDG-$lib $seq ; cat $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.majorsladdlist |wc -l; grep -f $seq.tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.majorsladdlist ~/tb/smrun_2009-05-28-18h/cshort/utrs_gff/$seq.TriTrypDB-1.0.utrs.gff.sladdlist |wc -l; done; done > majorsladd_in_090528cshort.log
+
+column -x -c 100 majorsladd_in_090528cshort.log > majorsladd_in_090528cshort.log.columns
+
+for file in GDG-10.Size23andup*psu*uorf.tab ; do grep -v "VSG\|pseudogene\|ESAG\|RHS\|retrotransposon\|degenerate\|unlikely\|frameshift\|ORF1\|ORF2\|pse\|ingi\|truncated" $file |awk '($4>0) {print $3,$7,$11}' | perl -ne 'chomp; @r = split; foreach $position (split(/\,+/, $r[1])) { if ($position != $r[2]) { print $position," ",$r[0],"\n" } } ' > ${file%%.uorf.tab}.minorsplicesitelist; done
+
+for file in GDG-10*minorsplicesitelist; do seqtmp=${file##*maqmap.counts.}; seq=${seqtmp%%.minorsplicesitelist}; echo $seq; cat $file |wc -l ; grep -w -f $file ~/tb/smrun_2009-10-19-14h/cshort/utrs_gff/Tbrucei_TriTrypDB-1.1.${seq}.utrs.gff.sladdlist.uniq |wc -l; done > ~/tb/smrun_2009-10-19-14h/cshort.uniq.vs.GDG-10.minor.log
+
+
+### other species
+
+for seq in `cat Lmajor_TriTryDB-1.0.list`; do ~/install/bin/fasta_header_grep.pl $seq LmajorGenomic_TriTrypDB-1.0.fasta > $seq.fasta; done
+for seq in `cat Lmajor_TriTryDB-1.0.list`; do grep $seq Lmajor_TriTryDB-1.0.lean.gff > $seq.gff; done
+for seq in `cat Lmajor_TriTryDB-1.0.list`; do /usr/local/emboss/bin/seqret $seq.fasta genbank:${seq}.TriTrypDB-1.0.gbk -fformat gff -fopenfile $seq.gff -feature; done
+
+#library stats
+
+No_Adapter_090328_s_5_seq_GDG1-4.tb_ttdb_1.maq.map
+-- (total, isPE, mapped, paired) = (1297037, 0, 1015228, 0)
+
+No_Adapter_090328_s_5_seq_GDG1-4.tb427es.maq.map
+-- (total, isPE, mapped, paired) = (1297037, 0, 116641, 0)
+
+grep -c ^@ GDG-*/*GDG*.fastq > libsizecounts
+cat libsizecounts |sed -e 's/_/:/g' |cut -d: -f 2,8 |sed -e 's/:/ /' |sort -k1,1n |grep -v Adapter |cut -d" " -f2 |column -t -c4 |perl -e '$count=0;$partsum=0; while(<STDIN>) { chomp; $count++; $partsum+=$_; if($count % 4 == 0) { print $count/4-1, "\t", $partsum, "\n"; $partsum = 0; } }' > libsizecounts.sum
+
+#R
+libc<-read.table("libsizecounts.sum");
+libcraw<-rep(libc$V1, libc$V2)
+> mean(libcraw)
+[1] 42.11606
+> median(libcraw)
+[1] 45
+
+#maqmap
+
+~/install/bin/maqmaptxt2gff.pl -s ../TbruceiGenomic_TriTrypDB-1.0.sizes.sillynames -l GDG${lib} -f maqmatchGDG${lib} < GDG-${lib}.tb_ttdb_1.maq.map.txt > GDG-${lib}.tb_ttdb_1.maq.gff
+
+
+#checking peaks in the GDG-4 bs lib
+for file in Size_23_090328_s_5_seq_GDG-4.bfq Size_34_090328_s_5_seq_GDG-4.bfq Size_44_090328_s_5_seq_GDG-4.bfq ; do maq map -n 2 -1 22 ${file%%.bfq}.maq.map /Users/daniel/tb/TbruceiGenomic_TriTrypDB-1.0.bfa $file; maq mapview ${file%%.bfq}.maq.map > ${file%%.bfq}.maq.map.txt; done
+
+cut -f 2,3 ../GDG-1/Size41and42_GDG-1.ttdb_1.maq.map.txt |sort |uniq -c|sort |tail -20 |awk '{print $2, $3, $1}'
+
+for file in Size_23_090328_s_5_seq_GDG-1.fastq Size_34_090328_s_5_seq_GDG-1.fastq Size_44_090328_s_5_seq_GDG-1.fastq ; do maq fastq2bfq $file ${file%%fastq}bfq; maq map -n 2 -1 22 ${file%%fastq}.maq.map /Users/daniel/tb/TbruceiGenomic_TriTrypDB-1.0.bfa ${file%%fastq}bfq; maq mapview ${file%%fastq}maq.map > ${file%%fastq}maq.map.txt; done
+
+for file in Size_25_090328_s_5_seq_GDG-4.fastq  ; do maq fastq2bfq $file ${file%%fastq}bfq ; maq map -n 2 -1 22 ${file%%fastq}tb427es.maq.map /Users/daniel/tb427es/tb427es.bfa ${file%%fastq}bfq; maq mapview ${file%%fastq}tb427es.maq.map > ${file%%fastq}tb427es.maq.map.txt; done
+
+# GDGX
+for seq in `cat ../fastalist` ; do ~/install/bin/per_gene_splicesite_info.pl -g ../$seq.TriTrypDB-1.0.gff -s ../$seq.fasta -t $seq.tb_ttdb_1.GDG${lib}.maq.gff -f maqmatchGDG${lib} -c gene -o $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -N 1297037; done
+
+for seq in `cat ../fastalist` ; do ~/install/bin/crunch_gff_with_counts.pl -g $seq.tb_ttdb_1.GDG${lib}.maq.map.gff -s ../$seq.fasta -f maqmatchGDG${lib} -c gene -o $seq.tb_ttdb_1.GDG${lib}.maq.map.crunch.gff -N 1297037; done
+
+# sections from compare file
+perl -ne 'my $section=0; my $print_section=2; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' <GDG1_vs_GDG2.tb_ttdb_1.maq.map.counts.compare |cut -f1|sort|uniq |grep -v total |wc -l
+
+for file in GDG*_vs_GDG*.tb_ttdb_1.m1.bowtie.map.counts.compare; do perl -ne 'my $section=0; my $print_section=3; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' <$file > ${file}.reg;  perl -ne 'my $section=0; my $print_section=4; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' < $file |grep -v "\#\#\#" >> ${file}.reg ; grep -v "\*\*\*" ${file}.reg |awk '($2 !="") { print $5,$10; }' > ${file}.reg.sign_norm_only ; done
+
+# plot
+
+gdg2vs3 <- read.table("GDG2_vs_GDG3.tb_ttdb_1.m1.bowtie.map.counts.compare.reg.sign_norm_only", header=TRUE)
+gdg4t<-read.table("tb_ttdb_1.GDG4_24up.m1.bowtie.map.counts.tab.clean")
+
+pdf("GDG_all_on_all_sign_norm.pdf")
+par(mar=c(2,2,0.2,0.2))
+
+layout(matrix(c(1,2,3,4, 11,5,6,7, 12,14,8,9, 13,15,16,10), 4, 4, byrow=TRUE))
+plot.new(); plot.window(c(0,1), c(0,1), log = ""); text(0.5,0.5,expression(bold("GDG-1")),adj=c(0.5,0.5),cex=2.5)
+
+plot( log10(gdg1vs2$LibA_total_Normalised), log10(gdg1vs2$LibB_total_Normalised),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot( log10(gdg1vs3$LibA_total_Normalised), log10(gdg1vs3$LibB_total_Normalised),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot( log10(gdg1vs4$LibA_total_Normalised), log10(gdg1vs4$LibB_total_Normalised),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+
+plot.new(); plot.window(c(0,1), c(0,1), log = ""); text(0.5,0.5,expression(bold("GDG-2")),adj=c(0.5,0.5),cex=2.5)
+plot( log10(gdg2vs3$LibA_total_Normalised), log10(gdg2vs3$LibB_total_Normalised),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot( log10(gdg2vs4$LibA_total_Normalised), log10(gdg2vs4$LibB_total_Normalised),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+
+plot.new(); plot.window(c(0,1), c(0,1), log = ""); text(0.5,0.5,expression(bold("GDG-3")),adj=c(0.5,0.5),cex=2.5)
+plot( log10(gdg3vs4$LibA_total_Normalised), log10(gdg3vs4$LibB_total_Normalised),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot.new(); plot.window(c(0,1), c(0,1), log = ""); text(0.5,0.5,expression(bold("GDG-4")),adj=c(0.5,0.5),cex=2.5)
+
+plot( log10(gdg1t$V5), log10(gdg2t$V5),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot( log10(gdg1t$V5), log10(gdg3t$V5),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot( log10(gdg1t$V5), log10(gdg4t$V5),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+
+plot( log10(gdg2t$V5), log10(gdg3t$V5),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+plot( log10(gdg2t$V5), log10(gdg4t$V5),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+
+plot( log10(gdg3t$V5), log10(gdg4t$V5),pch=".",cex=1.5, xlab="", ylab="",xlim=c(0,4), ylim=c(0,4))
+
+dev.off()
+
+
+# counting UTRs and UTR lengths
+for lib in 1 2 3 4 ; do awk '($8!=".") {print $8}' tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab |perl -ne 'chomp; if(m/\d+/) { @r = split /,/; print scalar(@r),"\n";}' > tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.splicesites_per_gene; done
+
+for lib in 1 2 3 4 ; do awk '($9!="." && $9>0) {print $9,$10}' tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.tab > tb_ttdb_1.GDG${lib}_24up.m1.bowtie.map.counts.majorsites; done
+
+majorcountgdg1<-read.table("tb_ttdb_1.GDG1_24up.m1.bowtie.map.counts.majorsites")
+repmajorcount2kgdg1<-rep(majorcountgdg1$V1[ majorcountgdg1$V1<2000 ],majorcountgdg1$V2[majorcountgdg1$V1<2000])
+mean(repmajorcount2kgdg2); median(repmajorcount2kgdg2);
+
+# power law normalisation
+perl -ne 'chomp; if($_ eq "") {next} @r=split /\s+/; ($rc) = ($r[8]=~m/raw_count=(\d+)/); print $r[0],$r[6],$r[3],"_",$r[4], "\t",$rc,"\n";' < GDG-4.size24andup_vs_Tbrucei_TriTrypDB-1.1.maqmap.crunch.gff > GDG-4.size24andup_vs_Tbrucei_TriTrypDB-1.1.maqmap.crunch.raw_counts_list
+
+g4raw<-read.table('GDG-4.size24andup_vs_Tbrucei_TriTrypDB-1.1.maqmap.crunch.raw_count_list', header=FALSE)
+g4rawtab<-as.data.frame(table(g4raw$V2))
+plot(as.numeric(levels(g4rawtab$Var1)), rev(cumsum(rev(as.numeric(g4rawtab$Freq)))),log="xy",type='l')
+
+plot(as.numeric(levels(g3rawtab$Var1)), rev(cumsum(rev(as.numeric(g3rawtab$Freq)))),log="xy",type='l',col='blue1',xlab="Tag count t",ylab="Num sites with count >= t",xaxp=c(1,10000,2),yaxp=c(1,50000,3),las=1)
+
+lines(as.numeric(levels(g4rawtab$Var1)), rev(cumsum(rev(as.numeric(g4rawtab$Freq)))),type='l',col='red')
+lines(as.numeric(levels(g2rawtab$Var1)), rev(cumsum(rev(as.numeric(g2rawtab$Freq)))),type='l',col='cyan')
+lines(as.numeric(levels(g1rawtab$Var1)), rev(cumsum(rev(as.numeric(g1rawtab$Freq)))),type='l',col='green')
+
+
+plot(as.numeric(levels(g3rawtab$Var1)), g3rawtab$Freq,log="xy",type='l',col='blue1',xlab="Tag count t",ylab="Num sites with count >= t",xaxp=c(1,10000,2),yaxp=c(1,50000,3),las=1)
+lines(as.numeric(levels(g4rawtab$Var1)), g4rawtab$Freq,type='l',col='red')
+lines(as.numeric(levels(g1rawtab$Var1)), g1rawtab$Freq,type='l',col='green')
+lines(as.numeric(levels(g2rawtab$Var1)), g2rawtab$Freq,type='l',col='cyan')
+
+# "timecourse"/profiles prep
+# get all genes with a sign diff between any pair and list
+
+for file in *compare.reg; do grep -v "^#\|\*" $file |awk '($2 !="") { print $1 }' > $file.list; done
+
+cat *reg.list |sort -n |uniq > all.reg.list
+
+for tab in *counts.tab; do ../../install/sladd/grep_big_list.pl -w -f all.reg.list $tab > ${tab%%.counts.tab}.on_exp_list.tab; done
+
+for tab in *on_exp_list.tab ; do awk '{print $1,$5}' $tab > ${tab%%.tab}.name_norm.tab; done
+
+../../install/sladd/join_columns.pl `cut -f 1 lc.comparison.list |sed -e 's/counts.tab/on_exp_list.name_norm.tab/g'`
+
+for tab in *on_exp_list.tab ; do awk '{print $5}' $tab >${tab%%.tab}.norm.tab; done
+
+firstfile=`cut -f 1 lc.comparison.list| head -1 |sed -e's/counts.tab/on_exp_list.tab/g'`
+
+awk '($2 != "") { print $13}' $firstfile > ${firstfile}.desc
+
+echo Name `cut -f 2 lc.comparison.list` Desc > lc.comparison.list.norm.tab
+
+../../install/sladd/join_columns.pl `cut -f 1 lc.comparison.list| head -1 | sed -e 's/counts.tab/on_exp_list.name_norm.tab/g'` `cut -f 1 lc.comparison.list|tail -4| sed -e 's/counts.tab/on_exp_list.norm.tab/g'` ${firstfile}.desc >> lc.comparison.list.norm.tab
+
+## bins
+
+lib=GDG-4; for seqfile in Tbrucei_TriTrypDB-1.1.psu\|T*fasta ; do crunchfile=${lib}.size24andup_vs_${seqfile%%fasta}maqmap.crunch.gff; ../../install/sladd/bin_gff_count_over_chromosome.pl -s $seqfile -g $crunchfile -f maqmatch${lib} -o ${crunchfile%%.crunch.gff}.crunch.binned; done
+
+lib=GDG-16; for seqfile in Tbrucei_TriTrypDB-1.1.psu\|T*fasta ; do crunchfile=${lib}.Size23andup_vs_${seqfile%%fasta}maqmap.crunch.gff; ../../install/sladd/bin_gff_count_over_chromosome.pl -s $seqfile -g $crunchfile -f maqmatch${lib} -o ${crunchfile%%.crunch.gff}.crunch.binned; done
+
+ lib=GDG-16; size=Size23andup; for seqfile in `cat TbruceiTreu927_TriTrypDB-2.0.fastalist` ; do crunchfile=${lib}.${size}_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seqfile%%.fasta}.crunch.gff; ../../src/sladd/bin_gff_count_over_chromosome.pl -s "TbruceiTreu927_TriTrypDB-2.0.${seqfile}.fasta" -g $crunchfile -f maqq30${lib} -o ${crunchfile%%crunch.gff}crunch.binned; done
+ lib=GDG-19; size=Size24to70; for seqfile in `cat TbruceiTreu927_TriTrypDB-2.0.fastalist` ; do crunchfile=${lib}.${size}_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seqfile%%.fasta}.crunch.gff; ../../src/sladd/bin_gff_count_over_chromosome.pl -s "TbruceiTreu927_TriTrypDB-2.0.${seqfile}.fasta" -g $crunchfile -f maqq30${lib} -o ${crunchfile%%crunch.gff}crunch.binned; done
+ lib=GDG-23; size=Size24to70; for seqfile in `cat TbruceiTreu927_TriTrypDB-2.0.fastalist` ; do crunchfile=${lib}.${size}_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seqfile%%.fasta}.crunch.gff; ../../src/sladd/bin_gff_count_over_chromosome.pl -s "TbruceiTreu927_TriTrypDB-2.0.${seqfile}.fasta" -g $crunchfile -f maqq30${lib} -o ${crunchfile%%crunch.gff}crunch.binned; done
+
+liba=GDG-16.Size23andup; libb=GDG-4.size24andup; for binfile in ${liba}*crunch.binned ; do grep -v \# $binfile > ${binfile}.nocomments; bbinfile=${libb}${binfile##$liba}; grep -v \# $bbinfile | awk '($3 >=0 ) {print $3}' > ${bbinfile}.count_col_only; ../../install/sladd/join_columns.pl ${binfile}.nocomments ${bbinfile}.count_col_only > ${liba}_and_${bbinfile}.nocomments ; awk '($3>=0) {print $1,"\t", $2,"\t",$3,"\t",$4,"\t",$3/($4+0.5)}' ${liba}_and_${bbinfile}.nocomments > ${liba}_and_${bbinfile}.nocomments.fold; done
+
+
+
+for file in GDG-19*crunch.binned ; do grep -v ^\# $file | awk '($1 >=0) {print $1"\t"$2}' > $file.bin_col ; done
+for file in *crunch.binned ; do grep -v ^\# $file | awk '($3>=0) {print $3}' > $file.count_col ; done
+for seq in `cat ../TbruceiTreu927_TriTrypDB-2.0.fastalist` ; do ../../../src/sladd/join_columns.pl GDG-19.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.${seq}.crunch.binned.bin_col GDG-19.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.${seq}.crunch.binned.count_col GDG-23.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.${seq}.crunch.binned.count_col GDG-16.Size23andup_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.${seq}.crunch.binned.count_col GDG-12.Size23andup_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.${seq}.crunch.binned.count_col GDG-4.size24andup_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.${seq}.crunch.binned.count_col > jnull.${seq}.crunch.binned.join ; done
+for seq in `cat ../TbruceiTreu927_TriTrypDB-2.0.fastalist` ; do ../../../src/sladd/join_columns.pl GDG-19.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seq}.crunch.binned.bin_col GDG-19.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seq}.crunch.binned.count_col GDG-23.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seq}.crunch.binned.count_col GDG-16.Size23andup_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seq}.crunch.binned.count_col GDG-12.Size23andup_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seq}.crunch.binned.count_col GDG-4.size24andup_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.q30.${seq}.crunch.binned.count_col > jnull.${seq}.q30.crunch.binned.join ; done
+
+
+
+## lenght of alt spliced UTRs?
+
+for file in LongSlender_vs_PC_early.maq.map.counts.compare ; do perl -ne 'my $section=0; my $print_section=1; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' <$file > ${file}.diffspl ; done
+
+grep -v \# LongSlender_vs_PC_early.maq.map.counts.compare.diffspl |grep -v \* |awk '($2>0) {print $1} ' > LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.names
+
+../../install/sladd/gather_tab_entries.pl -w -f LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.names GDG-1.Size24andup_vs_Tbrucei_TriTrypDB-1.1.maqmap.counts.tab  > LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-1.tab
+
+../../install/sladd/gather_tab_entries.pl -w -f LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.names GDG-9.Size23andup_vs_Tbrucei_TriTrypDB-1.1.maqmap.counts.tab > LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-9.tab
+
+awk '($9>=0 && $9<5000) {print $1,"\t",$9,"\t",$10}' LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-1.tab > LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-1.major_only
+
+awk '($9>=0 && $9<5000) {print $1,"\t",$9,"\t",$10}' LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-9.tab > LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-9.major_only
+
+awk 'BEGIN {sum=0} ($9>=0 && $9<5000) {sum=sum+$9} END {print sum }' LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-1.tab 
+224428
+awk 'BEGIN {sum=0} ($9>=0 && $9<5000) {sum=sum+$9} END {print sum }' LongSlender_vs_PC_early.maq.map.counts.compare.diffspl.from_GDG-9.tab 
+323655
+
+#for file in LongSlender_vs_PC.maq.map.counts.compare LongSlender_vs_ShortStumpy.maq.map.counts.compare ShortStumpy_vs_PC.maq.map.counts.compare; do perl -ne 'my $section=0; my $print_section=2; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++} if($print_section == $section) {print $r,"\n";}}' <$file > ${file}..section; grep -v "^\#\|^\*\|^\=" ShortStumpy_vs_PC.maq.map.counts.compare.alstpl.section |awk '($1!="") {print $1}' |sort |uniq|sort > $file.altspl.ids; done
+
+for file in  *altsplicestat.tab ; do grep -v "^\#\|^\*\|^\=" $file |awk '{print $1}' >> ext_and_int_altspliced.ids; done
+
+sort ext_and_int_altspliced.ids |uniq -c |sort -r |awk '{print $2}'|sed -e 's/-1//g;' > ext_and_int_altspliced.sorted.ids
+
+../install/sladd/fasta_header_grep.pl -w -f lc/ext_and_int_altspliced.sorted.ids TbruceiAnnotatedProteins_TriTrypDB-1.1.fasta > lc/ext_and_int_altspliced.sorted.pep
+
+grep "degenerate\|pseudogene" lc/ext_and_int_altspliced.sorted.pep |cut -f 2 -d \| |sed -e 's/ //g;' > lc/ext_and_int_altspliced.sorted.degen.ids
+
+grep -v -w -f lc/ext_and_int_altspliced.sorted.degen.ids lc/ext_and_int_altspliced.sorted.ids > lc/ext_and_int_altspliced.sorted.nopseudo.ids
+
+../install/sladd/fasta_header_grep.pl -w -f lc/ext_and_int_altspliced.sorted.nopseudo.ids TbruceiAnnotatedProteins_TriTrypDB-1.1.fasta > lc/ext_and_int_altspliced.sorted.nopseudo.pep
+
+# better also compare the number in each direction
+
+# to automate this then...
+
+for comp in *counts.compare ; do perl -ne 'my $section=0; my $print_section=1; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' < $comp > $comp.diffspl ; grep -v \# ${comp}.diffspl |grep -v \* |awk '($2>0) {print $1} ' > ${comp}.diffspl.names; done
+
+for comp in *counts.compare; do liba=${comp%%_vs*}; libbtmp=${comp##*_vs_}; libb=${libbtmp%%.maq.map.counts.compare}; echo $liba - $libb; ../../install/sladd/gather_tab_entries.pl -w -f ${comp}.diffspl.names `grep $liba lc.comparison.list |cut -f1` > ${comp}.diffspl.from_${liba}.tab; ../../install/sladd/gather_tab_entries.pl -w -f ${comp}.diffspl.names `grep $libb lc.comparison.list |cut -f1` > ${comp}.diffspl.from_${libb}.tab; done
+
+for file in *from*.tab ; do awk '($9>=0 && $9<5000) {print $1,"\t",$9,"\t",$10}' $file > ${file%%.tab}.major_only; done
+
+for file in *from*.tab ; do echo $file;  done
+
+for comp in *counts.compare; do liba=${comp%%_vs*}; libbtmp=${comp##*_vs_}; libb=${libbtmp%%.maq.map.counts.compare}; echo $liba - $libb; awk 'BEGIN {sum=0} ($9>=0 && $9<5000) {sum=sum+$9} END {print sum }' ${comp}.diffspl.from_${liba}.tab; awk 'BEGIN {sum=0} ($9>=0 && $9<5000) {sum=sum+$9} END {print sum }' ${comp}.diffspl.from_${libb}.tab; done
+
+for comp in *counts.compare; do liba=${comp%%_vs*}; libbtmp=${comp##*_vs_}; libb=${libbtmp%%.maq.map.counts.compare}; echo $liba "<->" $libb; echo -n $liba; awk 'BEGIN {sum=0} ($9>=0 && $9<5000) {sum=sum+$9} END {print "\t",sum }' ${comp}.diffspl.from_${liba}.tab; echo -n $libb ; awk 'BEGIN {sum=0} ($9>=0 && $9<5000) {sum=sum+$9} END {print "\t",sum }' ${comp}.diffspl.from_${libb}.tab; done
+
+# print those that get filtered out to file, then grep away from the other pair partner as well, then combine columns..
+
+for file in *from*.tab ; do awk '($9>=0 && $9>=5000) {print $1 }' $file > ${file%%.tab}.major_only.removeus ; done
+
+for comp in *counts.compare; do liba=${comp%%_vs*}; libbtmp=${comp##*_vs_}; libb=${libbtmp%%.maq.map.counts.compare}; echo $liba - $libb; grep -w -v -f ${comp}.diffspl.from_${libb}.major_only.removeus ${comp}.diffspl.from_${liba}.major_only > ${comp}.diffspl.from_${liba}.major_only.removed grep -w -v -f ${comp}.diffspl.from_${liba}.major_only.removeus ${comp}.diffspl.from_${libb}.major_only > ${comp}.diffspl.from_${libb}.major_only.removed ; wc -l ${comp}.diffspl.from_${liba}.major_only.removed ${comp}.diffspl.from_${libb}.major_only.removed ;../../install/sladd/join_columns.pl ${comp}.diffspl.from_${liba}.major_only.removed ${comp}.diffspl.from_${libb}.major_only.removed > $comp.diffspl.join_${liba}_and_${libb}; done
+
+# no, that gets messy; here's a version with screening saved for the final comparison step 
+
+for file in *from*.tab ; do awk '($10>=0) {print $1,"\t",$9,"\t",$10}' $file > ${file%%.tab}.major_only; done
+
+for comp in *counts.compare; do liba=${comp%%_vs*}; libbtmp=${comp##*_vs_}; libb=${libbtmp%%.maq.map.counts.compare}; echo $liba - $libb; ../../install/sladd/join_columns.pl ${comp}.diffspl.from_${liba}.major_only ${comp}.diffspl.from_${libb}.major_only > $comp.diffspl.join_${liba}_and_${libb}; awk '($2>=0&&$5>=0&& $2<5000 && $5<5000 && $2>$5) { print "first" } ($2>=0&&$5>=0&&$2<5000&&$5<5000&&$5>$2) { print "second" }' $comp.diffspl.join_${liba}_and_${libb} > $comp.diffspl.join_${liba}_and_${libb}.bigger; echo -n ${liba}" " ; grep -c first $comp.diffspl.join_${liba}_and_${libb}.bigger; echo -n ${libb}" " ; grep -c second $comp.diffspl.join_${liba}_and_${libb}.bigger; done
+
+normmat<-as.matrix(normtab[,2:5])
+rownames(normmat)<-normtab$Name
+heatmap.2(normmat[rowSums(normmat)>2000,],Colv=NA,Rowv=TRUE,dendrogram='none',col=redgreen(75),symkey=FALSE, density.info="none", trace="none",scale="row",labRow=NA)
+
+lsp<-(normtab[,2]+0.1)
+nm<-matrix( c(log2(normtab[,3]/lsp+0.001), log2(normtab[,4]/lsp+0.001), log2(normtab[,5]/lsp+0.001)) ,ncol=3,byrow=FALSE)
+heatmap.2(nm[apply(nm>2,1,sum)>0,],Colv=NA,Rowv=TRUE,dendrogram='none',col=redgreen(75),key=FALSE,symkey=FALSE, density.info="none", trace="none",cexRow=0.4,cexCol=0.7)
+
+														
+grep Name slc.comparison.list.norm.tab > slc.comparison.list.norm.phosphatases.tab
+
+grep -w -f phosphatases.ids slc.comparison.list.norm.tab >> slc.comparison.list.norm.phosphatases.tab
+
+sed -e 's/-1//g; s/\%2C/,/g;' slc.comparison.list.norm.phosphatases.tab | awk '{print $1"\t"$5"\t"$2"\t"$3"\t"$4}' |sed -e 's/+/ /g;' >slc.comparison.list.norm.phosphatases.tab.reorder
+
+cut -f 1,6 pm_kinome_with_orthologs.reg_in_tc.tab | perl -ne 'if(m/(Tb\S+)/) { $tb=$1; } while (m/(Tc00[.\d]+)/g) { print $tb,"\t",$1,"\n";}' > pm_kinome_with_orthologs.reg_in_tc.translist
+
+for file in *pm_kinome_reg_in_tc.reg ; do echo $file; awk '($4>$9) { print $1, "up", ($4+1)/($9+1)} ($4<$9) { print $1, "down", ($4+1)/($9+1)} ($4==$9 && $4 != "") { print $1, "equal", $4/$9} ' $file ; done > pm_kinome_reg_in_tc_reg_dirs
+
+grep LongSlender pm_kinome_reg_in_tc_reg_dirs |grep up | sed -e 's/-1//g;' |cut -f 1 -d' ' |sort |uniq > pm_kinome_reg_in_tc_reg_dirs.ls_up
+
+grep -w -f pm_kinome_reg_in_tc_reg_dirs.ls_up pm_kinome_with_orthologs.reg_in_tc.translist |cut -f 2 >pm_kinome_reg_in_tc_reg_dirs.ls_up.tcids
+
+grep -w -f pm_kinome_reg_in_tc_reg_dirs.ls_up.tcids tritryp_kinome_regulation_minning.csv |cut -f 1,5,7,10,13 | awk '($3>1) { print "up in trypo" }'
+
+grep -w -f pm_kinome_reg_in_tc_reg_dirs.ls_down.tcids tritryp_kinome_regulation_minning.csv |cut -f 1,5,7,10,13 | awk '($3<=-1) { print $1'} |sed -e 's/"//g;' >pm_kinome_reg_in_tc_reg_dirs.ls_down.tcids.codowntrypo
+
+grep -w -f pm_kinome_reg_in_tc_reg_dirs.ls_up.tcids.trypocoup pm_kinome_with_orthologs.reg_in_tc.translist |cut -f 1 |uniq > pm_kinome_reg_in_tc_reg_dirs.ls_up.tbids.couptrypo
+
+# pc is always last in comp, so dir is reversed
+grep PC pm_kinome_reg_in_tc_reg_dirs| grep down|sed -e 's/-1//g;' |cut -f 1 -d' ' |sort |uniq > pm_kinome_reg_in_tc_reg_dirs.pc_up
+grep PC pm_kinome_reg_in_tc_reg_dirs| grep up|sed -e 's/-1//g;' |cut -f 1 -d' ' |sort |uniq > pm_kinome_reg_in_tc_reg_dirs.pc_down
+
+for id in `cat jz.kinases.list.notok` ; do echo -n $id; grep -w $id TbruceiTreu927_TriTrypDB-2.0.gff |perl -ne 'chomp; m/locus_tag=([^;]+);/; print "\t".$1."\n";'; done
+
+awk '($1 != "") { print $1"\t"$5"\t"$2"\t"$3"\t"$4}' jan.comp.list.sign.norm.tab > jan.comp.list.sign.norm.tab.reorder
+awk '($1 != "") { print $1"\t"$5"\t"($3+1)/($2+1)"\t"($4+1)/($3+1) }' jan.comp.list.sign.norm.tab > jan.comp.list.sign.norm.tab.folds
+awk '($1 != "") { print $1"\t"$5"\t"($3+1)/($2+1)"\t"($4+1)/($3+1) }' jan.comp.list.sign.norm.tab | awk '( (($4>2)||($4<0.5)) && ((($3<2)&&($3>0.5)) )  ) {print} '  > jan.comp.list.sign.norm.tab.more_than_2_fold
+awk '(($3>40)||($4>40)) { print $1"\t"$5"\t"($3+1)/($2+1)"\t"($4+1)/($3+1) }' jan.comp.list.sign.norm.tab | awk '( (($4>2)||($4<0.5)) && ((($3<2)&&($3>0.5))) ) {print} '  > jan.comp.list.sign.norm.tab.more_than_2_fold.one_over_40
+head -1 jan.comp.list.sign.norm.tab.folds > jan.comp.list.sign.norm.more_than_2_fold.one_over_40.tab
+cat jan.comp.list.sign.norm.tab.more_than_2_fold.one_over_40 >> jan.comp.list.sign.norm.more_than_2_fold.one_over_40.tab 
+
+
+---
+
+for seq in `cat fastalist` ; do echo $seq; ../../install/sladd/process_tu.pl -s Tbrucei_TriTrypDB-1.1.${seq}.fasta -g Tbrucei_TriTrypDB-1.1.${seq}.gff -o Tbrucei_TriTrypDB-1.1.${seq}.tu.gff; done > tt11.tu.log
+
+cat *tu.gff| grep -c "VSG\|ESAG"
+cat *tu.gff| grep -c "PARP"
+cat *tu.gff| grep -c "rRNA"
+cat *tu.gff| grep -c "snRNA"
+cat *tu.gff| grep -c "slRNA"
+cat *tu.gff| grep -c "tRNA"
+
+cat *tu.gff | grep processTU | grep -v "tRNA\|rRNA\|PARP\|VSG\|ESAG\|snRNA\|slRNA" |awk '($6 >4) { print $9 }'|perl -ne 'm/TU_id=([^;]+)\;/; $tu=$1; m/gene_name=([^;]+);/; $genelist=$1; @geneids=split(/,+/,$genelist); map {print $tu."\t".$_."\n";} @geneids;'|cut -f1 |sort |uniq > tu.ids
+
+cat *tu.gff | grep processTU | grep -v "tRNA\|rRNA\|PARP\|VSG\|ESAG\|snRNA\|slRNA" |awk '($6 >4) { print $9 }'|perl -ne 'm/TU_id=([^;]+)\;/; $tu=$1; m/gene_name=([^;]+);/; $genelist=$1; @geneids=split(/,+/,$genelist); map {print $tu."\t".$_."\n";} @geneids;'> genes.in.tus
+mkdir tus
+for id in `cat ../tu.ids` ; do grep -w $id ../genes.in.tus |cut -f 2 > $id.gene_ids; done
+
+for geneidfile in ../s8/tus/*gene_ids ; do geneidname=`basename $geneidfile`; grep -w -f $geneidfile slc.comparison.list.sign.norm.tab > tus/slc.comparison.sign.norm.${geneidname%%.gff}.tab ; done
+
+for file in *gene_ids; do wc -l $file |sed -e 's/.gene_ids//;' |awk '{print $2"\t"$1;}'; done > ../../lc/tu.geneids.count
+
+for file in slc.comparison.sign.norm.psu\|T*gene_ids.tab ; do wc -l $file | sed -e 's/slc.comparison.sign.norm.//; s/.gene_ids.tab//;' |awk '{print $2"\t"$1;}'; done > slc.comparison.sign.count.tus
+
+
+--
+
+slc<-read.table('slc.comparison.list.norm.withdir.tab',header=TRUE)
+
+tu<-0; for(i in 2:(length(slc$PC))) { if ( (slc$Strand[i] != slc$Strand[i-1])|(slc$Start[i]<slc$Start[i-1]) ) { tu<-tu+1; };  slc$tu[i] <- tu }
+plot(log2(tapply((slc$PC+1)/(slc$LS+1), as.factor(slc$tu), mean)),type='h')
+tulist[(tapply((slc$PC+1)/(slc$LS+1), as.factor(slc$tu), mean)>5)]
+table(slc$tu)>=4
+
+table(slc$tu)[ tu_down_in_pc ]
+
+--
+
+for file in *q30*psu*astags.crunch.gff ; do grep antisense $file | awk '($7=="+") { print $1"\t"$5"\t"$2"\t"$3"\t"$6"\t"$7 } ($7=="-") { print 
+$1"\t"$4"\t"$2"\t"$3"\t"$6"\t"$7}'; done |sort 
+for file in *q30*psu*astags.crunch.gff ; do grep antisense $file | awk '($7=="+") { print $1"\t"$5"\t"$2"\t"$3"\t"$6"\t"$7 } ($7=="-") { print 
+$1"\t"$4"\t"$2"\t"$3"\t"$6"\t"$7}' |awk '($5>1) {print}' ; done |cut -f 1,2 |sort |uniq -c |awk '($1>1) {print}' |wc -l
+ 63
+
+
+
+for file in *q30*psu*astags.crunch.gff ; do grep antisense $file | awk '($7=="+") { print $1"\t"$5"\t"$2"\t"$3"\t"$6"\t"$7 } ($7=="-") { print $1"\t"$4"\t"$2"\t"$3"\t"$6"\t"$7 }'; done | cut -f 1,2 |sort |uniq -c
+
+
+for file in *q30*psu*astags.crunch.gff ; do grep antisense $file | awk '($7=="+") { print $1"\t"$5"\t"$2"\t"$3"\t"$6"\t"$7 } ($7=="-") { print $1"\t"$4"\t"$2"\t"$3"\t"$6"\t"$7 }'; done | cut -f 1,2 |sort |uniq -c |awk '($1>1) {print}' |wc -l
+     139
+
+
+--
+for file in *tu.gff ; do awk '($6==1 && $3=="TU" ) {print} ' $file |grep -v VSG|grep -v "^#" ; done |grep mRNA |perl -ne ' m/gene_name=([^;]+);/; print $1,"\n";' > single.gene.tu.ids
+cut -f 1 single_gene_tu.GDG-*.major_lt2k_tab |sort |uniq > slc.single_gene_tu.major_lt2k.ids
+grep -w -f slc.single_gene_tu.major_lt2k.ids slc.comparison.list.sign.norm.tab |wc -l
+--
+
+awk '($1!="Name") { print $1 "\t" ($2+1)/($3+1) "\t" ($3+1)/($4+1) "\t" ($4+1)/($2+1) "\t" $5 }' slc.comparison.list.sign.norm.tab | awk '($2 >=2 || $2<=0.5 || $3 >=2 || $3<=0.5 || $4 >=2 || $4<=0.5)'
+
+
+---
+
+function(x, y) { spearmancor <- cor.test(x, y, method="spearman")
+pearsoncor <- cor.test(x, y, method="pearson")
+linreg <- summary(lm(y~x))
+cat(sprintf("Correlation; Spearman rho=%.2f (p<=%.4f), Pearson r=%.2f (p<=%.4f), Linear reg model R2=%.3f\n", spearmancor$estimate, spearmancor$p.value, pearsoncor$estimate, pearsoncor$p.value, linreg$adj.r.squared))
+}
+
+--
+awk '($2>=0) {print $1, $9}' GDG-18.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.counts.tab > GDG-18.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.counts.tab.majors 
+awk '($2>=0) {print $1, $9}' GDG-20.Size24up_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.counts.tab > GDG-20.Size24up_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.counts.tab.majors
+join GDG-18.Size24to70_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.counts.tab.majors GDG-20.Size24up_vs_TbruceiTreu927_TriTrypDB-2.0.maqmap.counts.tab.majors > GDG-18.20.majors
+awk '($2 !="." && $2==$3) {print} ' < GDG-18.20.majors 
+awk '($2 !="." && $2==$3) {print} ' < GDG-18.20.majors |wc -l
+awk '($2 !="." && $2!=$3) {print} ' < GDG-18.20.majors |wc -l
+
+--
+
