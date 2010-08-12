@@ -6,4 +6,13 @@ Released under the Perl Artistic License 2.0.
 
 See the sladd_howto (.pdf, .odt) files for instructions.
 
+Some of the main programs have embedded Plain Old Documentation. 
+Use e.g. perldoc or the pod2* programs (pod2html, pod2man, pod2txt, ...)
+to view these.
+
+ perldoc run_maq.sh
+ perldoc run_comparison.sh
+ perldoc pipelinefunk.sh
+ perldoc seqfunk.pm
+
 Contact: daniel.nilsson.NO\/SPAM.izb.unibe.ch, daniel.k.nilsson.NO\/SPAM.gmail.com
