@@ -236,3 +236,20 @@ then
     cleanCategory result
     exit
 fi
+
+# set desired number of concurrent processes
+# prefer an already set value of $NPROC, or use nproc to return it if available
+
+if [ -z "$NPROC" ]
+then
+    NPROCBIN=`which nproc`
+    if [ -x $NPROCBIN ] 
+    then
+	NPROC=`$NPROCBIN`
+    fi
+
+    if [ -z "$NPROC" ] 
+    then 
+	NPROC=1
+    fi
+fi
