@@ -56,27 +56,9 @@ then
     single=yes
 fi
 
-# set forceupdate=yes to run all available analyses, even if the file modification times advise against it 
-if [ -z "$forceupdate" ]
-then
-    forceupdate=no
-fi
+# uses pipelinefunk.sh for needsUpdate, registerFile etc.
 
-# set desired number of concurrent processes
-# prefer an already set value of $NPROC, or use nproc to return it if available
-if [ -z "$NPROC" ]
-then
-    NPROCBIN=`which nproc`
-    if [ -x $NPROCBIN ] 
-    then
-	NPROC=`$NPROCBIN`
-    fi
-
-    if [ -z "$NPROC" ] 
-    then 
-	NPROC=1
-    fi
-fi
+. pipelinefunk.sh
 
 # CALLED will contain a complete pathname for this script
 CALLED=$0
@@ -123,31 +105,6 @@ then
 fi
 
 updates=no
-
-function needsUpdate()
-{
-    # USAGE: needsUpdate(target, prereq [, prereq]*)
-    # return true (needsupdate=yes) if target does not yet exist, is older than its prereqs or forceupdate=yes is in effect.
-
-    needsupdate="no"
-    
-    if [ "$forceupdate" = "yes" ] 
-    then
-	needsupdate="yes"
-    fi
-
-    target=$1;
-    
-    for prereq in ${@:2}
-    do
-	if [ $target -ot $prereq ]
-	then
-	    needsupdate="yes"
-	fi
-    done
-    
-    [ "$needsupdate" = "yes" ]
-}
 
 # check if reference bfa does not exist, or is older than fasta
 
