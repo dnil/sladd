@@ -1,5 +1,27 @@
 #!/usr/bin/perl -w
 
+=head1 NAME
+
+maqmaptxt2gff.pl
+
+=head1 AUTHOR
+
+Daniel Nilsson, daniel.nilsson@izb.unibe.ch, daniel.nilsson@ki.se, daniel.k.nilsson@gmail.com
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2009, 2010 held by Daniel Nilsson. The package is realesed for use under the Perl Artistic License.
+
+=head1 SYNOPSIS
+
+USAGE: C<<maqmaptxt2.pl -l <libraryname> -f <featurename> -s <sizefilename> >>
+
+=head1 DESCRIPTION
+
+Convert maq mapping txt results to GFF format (version 3). For proper GFF3 output, a valid size file is required.
+
+=cut
+
 my $lib ="maqlibplaceholder";
 my $featurename= "maq_match";
 my $sizefilename = "";
@@ -9,7 +31,7 @@ while (my $arg = shift @ARGV) {
         if ($arg eq '-l') {
             my $next_arg = shift @ARGV;
             if($next_arg eq "") {
-                print "-l requires an argument, but non given. Bailing out.\n";
+                print "-l requires an argument, but none given. Bailing out.\n";
                 exit 1;
             } else {
                 $lib = $next_arg;
@@ -29,7 +51,7 @@ while (my $arg = shift @ARGV) {
         if ($arg eq '-s') {
             my $next_arg = shift @ARGV;
             if($next_arg eq "") {
-                print "-s requires an argument, but non given. Bailing out.\n";
+                print "-s requires an argument, but none given. Bailing out.\n";
                 exit 1;
             } else {
                 $sizefilename = $next_arg;
@@ -39,7 +61,7 @@ while (my $arg = shift @ARGV) {
 }
 
 my %ref_size;
-if($sizefilename ne "") {    
+if($sizefilename ne "") {
     open SIZES, $sizefilename; 
 
     while(my $r=<SIZES>) {

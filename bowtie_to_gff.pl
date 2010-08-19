@@ -1,7 +1,30 @@
 #!/usr/bin/perl -w
 
-my $bowtielib ="bowtielibplaceholder";
+=head1 NAME
+
+bowtie_to_gff.pl
+
+=head1 AUTHOR
+
+Daniel Nilsson, daniel.nilsson@izb.unibe.ch, daniel.nilsson@ki.se, daniel.k.nilsson@gmail.com
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2009, 2010 held by Daniel Nilsson. The package is realesed for use under the Perl Artistic License.
+
+=head1 SYNOPSIS
+
+USAGE: C<<bowtie_to_gff.pl -l <libraryname> -f <featurename> -s <sizefilename> >>
+
+=head1 DESCRIPTION
+
+Convert maq mapping txt results to GFF format (version 3). For proper GFF3 output, a valid size file is required.
+
+=cut
+
+my $bowtielib = "bowtielibplaceholder";
 my $featurename= "nucleotide_match";
+my $sizefilename = "";
 
 while (my $arg = shift @ARGV) {
     if ($arg =~ /^-/) {
@@ -39,7 +62,7 @@ while (my $arg = shift @ARGV) {
 
 my %ref_size;
 if($sizefilename ne "") {    
-    open SIZES, $sizefilename; 
+    open SIZES, $sizefilename;
 
     while(my $r=<SIZES>) {
 	chomp $r;
