@@ -28,7 +28,16 @@ DOCUMENTATION
 
 =head2 needsUpdate(target, prereq [, prereq]*)
 
-Return true (needsupdate=yes) if target does not yet exist, is older than its prereqs or forceupdate=yes is in effect. set forceupdate=yes to run all available analyses, even if the file modification times advise against it 
+Return true (needsupdate=yes) if target does not yet exist, is older
+than its prereqs or forceupdate=yes is in effect. set forceupdate=yes
+to run all available analyses, even if the file modification times
+advise against it.
+
+Note that this will be false if the target exists, but is incomplete,
+as in after a previous interruption or crash, uncaught problems with
+input data etc.  Take care to remove any affected intermediate or
+results files after an error was detected, or clean the whole
+directory with directive C<shinyclean> if unsure.
 
 =cut
 
@@ -129,9 +138,13 @@ function needsUpdateTimeBased()
 
 =head2 registerFile(file, category) 
 
- USAGE: registerFile /absolute/path/to/file category
- 
-Register file with the cleanup system. Basically log it to a file, named after the category. Category is currently limited to C<result|temp>.
+ USAGE: registerFile /absolute/path/to/file category 
+
+Register file with the cleanup system. Basically log it to a file,
+named after the category. Category is currently limited to
+C<result|temp>. Best practice is to call registerFile before actually
+starting to write the file, so that cleanup will find also partial
+files.
 
 =cut
 
@@ -147,12 +160,57 @@ function registerFile()
     local category=$2
 
     # test file..
+    register=${pipelineregisterdir}/.pipeline.register.$category
 
     # check that it's not already on the list?
-    
-    echo $savefile >> ${pipelineregisterdir}/.pipeline.register.$category
-    
+    grep -x $savefile ${register} > /dev/null
+    if [ $? -eq 0 ]
+    then
+	# savefile was already on the register file
+	:
+    else
+	echo $savefile >> ${register} 
+    fi
 }
+
+#: <<'FLAG_DOC'
+#
+#=head2 flagActive(file)
+#
+# USAGE: flagActive file 
+#
+#Flags file as being written. Use to provide some protection against inconsistencies when a run is interrupted.
+#Note that the flag will 
+#
+#
+#NOT safe for multiple instances of pipelines running concurrently!
+#
+#FLAG_DOC
+#
+#flagfile=${pipelineregisterdir}/.pipeline.active.flag
+#
+#function flagActive()
+#{
+#    local file=$1
+
+#     local nowstamp=`date +%s`
+
+#     touch ${file}.active.${nowstamp}
+#     echo ${file}.active.${nowstamp} > ${flagfile}
+# }
+
+# function flagDone()
+# {
+# #    if [ $? != 0 ] ... check return status for a little bit more protection?
+#     rm $flagfile
+# }
+
+# # remove any outstanding "active" files
+# if [ -e $flagfile ]
+# then
+#     rm `cat $flagfile`
+#     rm $flagfile
+# fi
 
 : <<'CLEAN_FUNCTION_DOC'
 
