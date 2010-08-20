@@ -145,11 +145,18 @@ fi
 
 export PERL5LIB=$PERL5LIB:$BINDIR
 
+# Set prefered short read aligner
+if [ -z "$ALIGN" ]
+then
+    ALIGN=maq
+    #ALIGN=bowtie
+fi
+
 # MAQBIN is the MAQ installation directory (path to the maq binary)
 if [ -z "$MAQBIN" ]
 then
-	#MAQBIN=~/bin/maq
-	MAQBIN=~/install/maq-0.7.1/maq
+	MAQBIN=/usr/bin/maq
+	#MAQBIN=~/install/maq-0.7.1/maq
 fi
 
 # BOWTIEBINDIR is the bowtie installation directory
@@ -294,12 +301,29 @@ POD_FILE
 
 # check if reference bfa does not exist, or is older than fasta
 
-refbfa=${reffile%fasta}bfa
-
-if needsUpdate $refbfa $reffile
+if [ "$ALIGN" == "maq" ] 
 then
-    $MAQBIN fasta2bfa $reffile $refbfa
-    updates=yes
+    refbfa=${reffile%fasta}bfa
+
+    if needsUpdate $refbfa $reffile
+    then
+	$MAQBIN fasta2bfa $reffile $refbfa
+	registerFile $refbfa temp
+	updates=yes
+    fi
+elif [ "$ALIGN" == "bowtie" ]
+then
+    refbuild=${reffile%fasta}bowtiebuild
+    
+    if needsUpdate $refbuild $reffile
+    then
+	$BOWTIEBINDIR/bowtie-build $reffile $refbuild
+	registerFile $refbuild temp
+	updates=yes
+    fi
+else
+    echo "ERROR: sorry, run_maq.sh is not configured to run aligner ${ALIGN}. Consider using another value for \$ALIGN."
+    exit 1
 fi
 
 # count the number of reads in tagfile
@@ -307,96 +331,147 @@ fi
 
 libsize=`grep -c ^@ $tagfile`
 
-# maq performs optimally around 2M reads, according to its manual pages
-# if the number of reads is considerably larger than that (3M), split before bfq generation, 
-# map separately and mapmerge the alignments.
+map=${tagfile%.fastq}_vs_${reffile%.fasta}.${ALIGN}map
 
-maqmap=${tagfile%.fastq}_vs_${reffile%.fasta}.maqmap
+if [ "$ALIGN" == "maq" ]
+then 
 
-if [ $libsize -gt 3000000 ] 
-then
-    tagfileprefix=${tagfile}.split
-    maqmapupdate="no"
-    
-    # split into 8M/4=2M line files
-    registerFile $tagfile.done.split temp
-    if needsUpdate $tagfile.done.split $tagfile
+    # maq performs optimally around 2M reads, according to its manual pages
+    # if the number of reads is considerably larger than that (3M), split before bfq generation, 
+    # map separately and mapmerge the alignments.
+
+    if [ $libsize -gt 3000000 ] 
     then
-	split -l 8000000 $tagfile ${tagfileprefix}
-	echo ${tagfileprefix}[a-z][a-z] > $tagfile.done.split
-    fi
-
-    splitnr=0
-
-    # check if bfq does not exist, or is older than fastq
-    for splittagfile in ${tagfileprefix}[a-z][a-z]
-    do
-	bfqfile=${splittagfile}.bfq
-	if needsUpdate $bfqfile $splittagfile
-	then	    
-	    $MAQBIN fastq2bfq $splittagfile $bfqfile
-	    updates=yes
-	fi
-
-	splitmaqmap=${splittagfile}_vs_${reffile%.fasta}.maqmap
-
-	if needsUpdate $splitmaqmap $refbfa $bfqfile
-	then
-	    log=${maqmap}.log
-	    rundate=`date`
-	    echo "map -n 3 $splitmaqmap $refbfa $bfqfile : (${rundate})" >> ${log}
-	    $MAQBIN map -n 3 $splitmaqmap $refbfa $bfqfile 2>> ${log}
-	    updates=yes
-	    maqmapupdate="yes"
-	fi
+	tagfileprefix=${tagfile}.split
+	mapupdate="no"
 	
-	splittagfiles[$splitnr]=$splittagfile
-	splitmaqmap[$splitnr]=$splitmaqmap
-	splitnr=$(( $splitnr + 1 ))
-    done
+        # split into 8M/4=2M line files
 
-    if [ "$maqmapupdate" = "yes" ] 
-    then
-	$MAQBIN mapmerge $maqmap ${splitmaqmap[@]}
-    fi
-else
+	if needsUpdate $tagfile.done.split $tagfile
+	then
+	    split -l 8000000 $tagfile ${tagfileprefix}
+	    echo ${tagfileprefix}[a-z][a-z] > $tagfile.done.split
+	    registerFile $tagfile.done.split temp
+	fi
+
+	splitnr=0
+
+    # check if bfq does not exist, or is older than fastq
+	for splittagfile in ${tagfileprefix}[a-z][a-z]
+	do
+	    bfqfile=${splittagfile}.bfq
+	    if needsUpdate $bfqfile $splittagfile
+	    then	    
+		$MAQBIN fastq2bfq $splittagfile $bfqfile
+		registerFile $bfqfile temp
+		updates=yes
+	    fi
+
+	    splitmap=${splittagfile}_vs_${reffile%.fasta}.${ALIGN}map
+
+	    if needsUpdate $splitmap $refbfa $bfqfile
+	    then
+		log=${map}.log
+		rundate=`date`
+		echo "map -n 3 $splitmap $refbfa $bfqfile : (${rundate})" >> ${log}
+		$MAQBIN map -n 3 $splitmap $refbfa $bfqfile 2>> ${log}
+		registerFile $splitmap temp
+		updates=yes
+		mapupdate="yes"
+	    fi
+	    
+	    splittagfiles[$splitnr]=$splittagfile
+	    splitmap[$splitnr]=$splitmap
+	    splitnr=$(( $splitnr + 1 ))
+	done
+
+	if [ "$mapupdate" = "yes" ] 
+	then
+	    $MAQBIN mapmerge $map ${splitmap[@]}
+	    registerFile $map result
+	fi
+    else
 
     # check if bfq does not exist, or is older than fastq
 
-    bfqfile=${tagfile%fastq}bfq
+	bfqfile=${tagfile%fastq}bfq
 
-    if needsUpdate $bfqfile $tagfile
-    then
-	$MAQBIN fastq2bfq $tagfile $bfqfile
-	updates=yes
-    fi
+	if needsUpdate $bfqfile $tagfile
+	then
+	    $MAQBIN fastq2bfq $tagfile $bfqfile
+	    registerFile $bfqfile temp	    
+	    updates=yes
+	fi
 
     # map
     # size-sep to avoid length cutoff?
-    if needsUpdate $maqmap $refbfa $bfqfile
+	if needsUpdate $map $refbfa $bfqfile
+	then
+	    log=${map}.log
+	    rundate=`date`
+	    echo "map -n 3 $map $refbfa $bfqfile : (${rundate})" >>${log}
+	    $MAQBIN map -n 3 $map $refbfa $bfqfile 2>>${log}
+	    updates=yes
+	fi
+    fi
+elif [ "$ALIGN" == "bowtie" ]
+then
+    log=${map}.log
+
+    rundate=`date`
+    echo "bowtie --best -M 1 -n 3 -p $NCPU $refhash $tagfile $map : (${rundate})" >> ${log}
+    # -M 1 to account for multimappers..
+    $BOWTIEBINDIR/bowtie --best -M 1 -n 3 -p $NCPU $refhash $tagfile $map
+    registerFile $map result
+
+fi
+# no else for method choice -- this will have been cleared previously.
+
+# convert binary maq map file to text format
+if [ "$ALIGN" == "maq" ]
+then
+    if needsUpdate ${map}.txt $map
     then
-	log=${maqmap}.log
-	rundate=`date`
-	echo "map -n 3 $maqmap $refbfa $bfqfile : (${rundate})" >>${log}
-	$MAQBIN map -n 3 $maqmap $refbfa $bfqfile 2>>${log}
+	$MAQBIN mapview ${map} > ${map}.txt
+	registerFile ${map}.txt temp
 	updates=yes
     fi
 fi
 
-# convert binary maq map file to text format
-
-if needsUpdate ${maqmap}.txt $maqmap
-then
-    $MAQBIN mapview ${maqmap} > ${maqmap}.txt
-    updates=yes
+single=q${alqt}
+if [ "$ALIGN" == "bowtie" ]
+then 
+    single=single
 fi
 
-maqmapsingle=${maqmap}.q${alqt}
+mapsingle=${map}.${single}
 
-if needsUpdate ${maqmapsingle}.txt ${maqmap}.txt
+#if [ "$ALIGN" == "bowtie" ]
+#then
+#    log=${map}.log
+#
+#    rundate=`date`
+#    echo "bowtie --best -n 3 -m 1 -p $NCPU $refhash $tagfile $map : (${rundate})" >> ${log}
+#    $BOWTIEBINDIR/bowtie --best -M 1 -n 3 -p $NCPU $refhash $tagfile $mapsingle
+#fi
+
+if [ "$ALIGN" == "bowtie" ]
 then
-    awk '($7>='$alqt') {print;}' < ${maqmap}.txt > ${maqmapsingle}.txt
-    awk '($7==0) {print;}' < ${maqmap}.txt > ${maqmap}.multi.txt 
+	awk '($7==0) {print;}' < ${map} > ${mapsingle}.txt 
+	registerFile ${mapsingle}.txt temp
+	awk '($7>=2) {print;}' < ${map} > ${map}.multi.txt
+	registerFile ${map}.multi.txt temp
+fi
+
+if [ "$ALIGN" == "maq" ]
+then
+    if needsUpdate ${mapsingle}.txt ${map}.txt
+    then
+	awk '($7>='$alqt') {print;}' < ${map}.txt > ${mapsingle}.txt
+	registerFile ${mapsingle}.txt temp
+	awk '($7==0) {print;}' < ${map}.txt > ${map}.multi.txt 
+	registerFile ${map}.multi.txt temp
+    fi
 fi
 
 # prepare for gff conversions (sizes needed for GBrowse GFF3 import)
@@ -405,26 +480,50 @@ refsizes=${reffile%fasta}sizes
 if needsUpdate $refsizes $reffile $BINDIR/count_fasta_seq_len.pl
 then
     $BINDIR/count_fasta_seq_len.pl < $reffile > $refsizes
+    registerFile $refsizes temp
     updates=yes
 fi
 
 lib=${tagfile%%.*} # first part of tagfile name is library name
-maqmapgff=${maqmap}.gff
-if needsUpdate $maqmapgff $maqmap ${maqmap}.txt $BINDIR/maqmaptxt2gff.pl
+mapgff=${map}.gff
+
+if [ "$ALIGN" == "maq" ]
 then
-    $BINDIR/maqmaptxt2gff.pl -s $refsizes -l ${lib} -f maqmatch${lib} < ${maqmap}.txt > ${maqmapgff} ; 
-    updates=yes
+    if needsUpdate $mapgff $map ${map}.txt $BINDIR/maqmaptxt2gff.pl
+    then
+	$BINDIR/maqmaptxt2gff.pl -s $refsizes -l ${lib} -f ${ALIGN}match${lib} < ${map}.txt > ${mapgff};
+	registerFile $mapgff result
+	updates=yes
+    fi
+elif [ "$ALIGN" == "bowtie" ]
+then
+    if needsUpdate $mapgff $map $BINDIR/bowtie_to_gff.pl
+    then
+	$BINDIR/bowtie_to_gff.pl -s $refsizes -l ${lib} -f ${ALIGN}match${lib} < ${map} > ${mapgff};
+	registerFile $mapgff result
+	updates=yes
+    fi
 fi
 
-maqmapsinglegff=${maqmapsingle}.gff
-if [ "$single" = "yes" ] 
+mapsinglegff=${mapsingle}.gff
+if [ "$single" = "yes" ]
 then
-    if needsUpdate $maqmapsinglegff $maqmap ${maqmapsingle}.txt $BINDIR/maqmaptxt2gff.pl
+    if [ "$ALIGN" == "maq" ]
     then
-
-	$BINDIR/maqmaptxt2gff.pl -s $refsizes -l ${lib} -f maqq${alqt}${lib} < ${maqmapsingle}.txt > ${maqmapsinglegff};
-
-	updates=yes
+	if needsUpdate $mapsinglegff $map ${mapsingle}.txt $BINDIR/maqmaptxt2gff.pl
+	then
+	    $BINDIR/maqmaptxt2gff.pl -s $refsizes -l ${lib} -f ${ALIGN}${single}${lib} < ${mapsingle}.txt > ${mapsinglegff};
+	    registerFile ${mapsinglegff} result
+	    updates=yes
+	fi
+    elif [ "$ALIGN" == "bowtie" ]
+    then
+	if needsUpdate $mapsinglegff $mapsingle $BINDIR/bowtie_to_gff.pl
+	then
+	    $BINDIR/bowtie_to_gff.pl -s $refsizes -l ${lib} -f ${ALIGN}${single}${lib} < ${mapsingle} > ${mapsinglegff};
+	    registerFile ${mapsinglegff} result
+	    updates=yes
+	fi
     fi
 fi
 
@@ -436,13 +535,13 @@ fastalist=${reffile%fasta}fastalist
 if needsUpdate $fastalist $reffile 
 then
     grep \> $reffile |sed -e 's/>//;'|cut -f 1 -d' ' > $fastalist
+    registerFile ${fastalist} temp
 fi
 
 # prepare per-sequence part (chromosome or such) prerequisite files
 
 for seq in `cat $fastalist` ;
 do
-
     # update refseqgff split if there is a new refseqgff available
 
     refseqgff=${reffile%.fasta}.${seq}.gff
@@ -452,6 +551,7 @@ do
     if needsUpdate ${refseqgff} ${refgff}
     then
 	grep "${grepsafeseq}" ${refgff} > ${refseqgff}
+	registerFile ${refseqgff} temp
     fi
 
     # update ref fasta split if there is a new reffile available
@@ -461,21 +561,22 @@ do
     if needsUpdate ${refseq} ${reffile} $BINDIR/fasta_header_grep.pl
     then
 	$BINDIR/fasta_header_grep.pl "${grepsafeseq}" ${reffile} > ${refseq}
+	registerFile ${refseq} temp
     fi
 
 done
 
 # produce main gff files
 
-maqmaptab=${maqmap}.counts.tab
-maqmapsingletab=${maqmapsingle}.counts.tab
+maptab=${map}.counts.tab
+mapsingletab=${mapsingle}.counts.tab
 
-maqmapuorftab=${maqmaptab%.tab}.uorf.tab
-maqmapsingleuorftab=${maqmapsingletab%.tab}.uorf.tab
+mapuorftab=${maptab%.tab}.uorf.tab
+mapsingleuorftab=${mapsingletab%.tab}.uorf.tab
 
 # update flags for agglomeration of multi sequence unit files 
-maqmap_update=no
-maqmapsingle_update=no
+map_update=no
+mapsingle_update=no
 crunch_update=no
 crunchsingle_update=no
 uorf_update=no
@@ -483,26 +584,28 @@ uorfsingle_update=no
 
 for seq in `cat $fastalist` ;
 do
-    # split the maqmap data (gff format) into per sequence unit files, full set of mappers
+    # split the map data (gff format) into per sequence unit files, full set of mappers
 
-    seqmaqmapgff=${maqmapgff%.gff}.${seq}.gff
+    seqmapgff=${mapgff%.gff}.${seq}.gff
     
 #    grepsafeseq=`echo ${seq}|sed -e 's/|/\\\|/g'`
 
-    if needsUpdate $seqmaqmapgff $maqmapgff
+    if needsUpdate $seqmapgff $mapgff
     then
-	grep ${seq} ${maqmapgff} > ${seqmaqmapgff}
+	grep ${seq} ${mapgff} > ${seqmapgff}
+	registerFile $seqmapgff temp
     fi
 
-    # split the maqmap data (gff format) into per sequence unit files, single mappers
+    # split the map data (gff format) into per sequence unit files, single mappers
 
-    seqmaqmapsinglegff=${maqmapsinglegff%.gff}.${seq}.gff
+    seqmapsinglegff=${mapsinglegff%.gff}.${seq}.gff
 
     if [ "$single" = "yes" ]
     then
-	if needsUpdate $seqmaqmapsinglegff $maqmapsinglegff
+	if needsUpdate $seqmapsinglegff $mapsinglegff
 	then
-	    grep ${seq} ${maqmapsinglegff} > ${seqmaqmapsinglegff}
+	    grep ${seq} ${mapsinglegff} > ${seqmapsinglegff}
+	    registerFile $seqmapsinglegff temp
 	fi
     fi
 
@@ -511,108 +614,119 @@ do
     refseqgff=${reffile%.fasta}.${seq}.gff
     refseq=${reffile%.fasta}.${seq}.fasta
     
-    genegff=${maqmapgff%.gff}.${seq}.gene.gff
+    genegff=${mapgff%.gff}.${seq}.gene.gff
 
-    if needsUpdate $genegff $refseqgff $refseq $seqmaqmapgff "$BINDIR/per_gene_splicesite_info.pl"
+    if needsUpdate $genegff $refseqgff $refseq $seqmapgff "$BINDIR/per_gene_splicesite_info.pl"
     then
-	log=${maqmap}.log
+	log=${map}.log
 	rundate=`date`
 	echo "$seq : per_gene_splicesite_info ($rundate)" >> $log
-	$BINDIR/per_gene_splicesite_info.pl -g ${refseqgff} -s ${refseq} -t ${seqmaqmapgff} -f maqmatch${lib} -o ${genegff} -c ${genetype} -U ${utrcutoff} >> $log
+	$BINDIR/per_gene_splicesite_info.pl -g ${refseqgff} -s ${refseq} -t ${seqmapgff} -f ${ALIGN}match${lib} -o ${genegff} -c ${genetype} -U ${utrcutoff} >> $log
+	registerFile $genegff result
     fi
 
     # initial gene-gffs, single mappers
 
-    genesinglegff=${maqmapsinglegff%.gff}.${seq}.gene.gff
+    genesinglegff=${mapsinglegff%.gff}.${seq}.gene.gff
     if [ "$single" = "yes" ]
     then
-	if needsUpdate $genesinglegff $refseqgff $refseq $seqmaqmapsinglegff "$BINDIR/per_gene_splicesite_info.pl"
+	if needsUpdate $genesinglegff $refseqgff $refseq $seqmapsinglegff "$BINDIR/per_gene_splicesite_info.pl"
 	then
-	    log=${maqmap}.log
+	    log=${map}.log
 	    rundate=`date`
 	    echo "$seq : per_gene_splicesite_info ($rundate) : single mappers : " >> $log
-	    $BINDIR/per_gene_splicesite_info.pl -g ${refseqgff} -s ${refseq} -t ${seqmaqmapsinglegff} -f maqq${alqt}${lib} -o ${genesinglegff} -c ${genetype} -U ${utrcutoff} >> $log
+	    $BINDIR/per_gene_splicesite_info.pl -g ${refseqgff} -s ${refseq} -t ${seqmapsinglegff} -f ${ALIGN}${single}${lib} -o ${genesinglegff} -c ${genetype} -U ${utrcutoff} >> $log
+	    registerFile $genesinglegff result
 	fi
     fi
 
     # antisense tags
 
-    astaggff=${maqmapgff%.gff}.${seq}.astags.gff
-    if needsUpdate $astaggff $refseqgff $refseq $seqmaqmapgff "$BINDIR/list_antisense_splicesites.pl"
+    astaggff=${mapgff%.gff}.${seq}.astags.gff
+    if needsUpdate $astaggff $refseqgff $refseq $seqmapgff "$BINDIR/list_antisense_splicesites.pl"
     then
-	aslog=${maqmap}.antisense.log
+	aslog=${map}.antisense.log
 	rundate=`date`
 	echo "$seq : list_antisense_splicesites ($rundate)" >> $aslog
-	$BINDIR/list_antisense_splicesites.pl -g ${refseqgff} -s ${refseq} -t ${seqmaqmapgff} -f maqmatch${lib} -o ${astaggff} -c ${genetype} >> $aslog
+	$BINDIR/list_antisense_splicesites.pl -g ${refseqgff} -s ${refseq} -t ${seqmapgff} -f ${ALIGN}match${lib} -o ${astaggff} -c ${genetype} >> $aslog
+	registerFile $astaggff result
     fi
+    # why not crunch these when we crunch the singlemappers?
 
     # antisense tags, single mappers
 
-    astagsinglegff=${maqmapsinglegff%.gff}.${seq}.astags.gff
-    if needsUpdate $astagsinglegff $refseqgff $refseq $seqmaqmapsinglegff "$BINDIR/list_antisense_splicesites.pl"
+    astagsinglegff=${mapsinglegff%.gff}.${seq}.astags.gff
+    if needsUpdate $astagsinglegff $refseqgff $refseq $seqmapsinglegff "$BINDIR/list_antisense_splicesites.pl"
     then
-	aslogsingle=${maqmapsingle}.antisense.log
+	aslogsingle=${mapsingle}.antisense.log
 	rundate=`date`
 	echo "$seq : list_antisense_splicesites ($rundate)" >> $aslogsingle
-	$BINDIR/list_antisense_splicesites.pl -g ${refseqgff} -s ${refseq} -t ${seqmaqmapsinglegff} -f maqq${alqt}${lib} -o ${astagsinglegff} -c ${genetype} >> $aslogsingle
+	$BINDIR/list_antisense_splicesites.pl -g ${refseqgff} -s ${refseq} -t ${seqmapsinglegff} -f ${ALIGN}${single}${lib} -o ${astagsinglegff} -c ${genetype} >> $aslogsingle
+	registerFile $astagsinglegff temp
     fi
 
-    astagsinglecrunchgff=${maqmapsinglegff%.gff}.${seq}.astags.crunch.gff
-    if needsUpdate $astagsinglecrunchgff $maqmapsingle $astagsinglegff $BINDIR/crunch_gff_with_counts.pl
+    astagsinglecrunchgff=${mapsinglegff%.gff}.${seq}.astags.crunch.gff
+    if needsUpdate $astagsinglecrunchgff $mapsingle $astagsinglegff $BINDIR/crunch_gff_with_counts.pl
     then
-	$BINDIR/crunch_gff_with_counts.pl -g ${astagsinglegff} -s ${refseq} -f maqq${alqt}${lib} -N $libsize -c ${genetype} -o ${astagsinglecrunchgff}
+	$BINDIR/crunch_gff_with_counts.pl -g ${astagsinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${astagsinglecrunchgff}
+	regsiterFile $astagsinglecrunchgff result
 #	crunchsingle_update=yes
 	updates=yes
     fi
 
     # counts tabs, reporting most of the per gene mapping data in a tabular format, for all mapping reads
 
-    seqmaqmaptab=${maqmaptab%.tab}.${seq}.tab
+    seqmaptab=${maptab%.tab}.${seq}.tab
 
-    if needsUpdate $seqmaqmaptab $genegff $refseq $BINDIR/tagged_gff_to_counts_tab.pl
+    if needsUpdate $seqmaptab $genegff $refseq $BINDIR/tagged_gff_to_counts_tab.pl
     then
-	$BINDIR/tagged_gff_to_counts_tab.pl -g ${genegff} -s ${refseq} -f maqmatch${lib} -N $libsize -c ${genetype} -o ${seqmaqmaptab}
-	maqmap_update=yes
+	$BINDIR/tagged_gff_to_counts_tab.pl -g ${genegff} -s ${refseq} -f ${ALIGN}match${lib} -N $libsize -c ${genetype} -o ${seqmaptab}
+	registerFile $seqmaptab temp
+	map_update=yes
 	updates=yes
     fi
    
     # counts tabs, single mappers
 
-    seqmaqmapsingletab=${maqmapsingletab%.tab}.${seq}.tab
+    seqmapsingletab=${mapsingletab%.tab}.${seq}.tab
     if [ "$single" = "yes" ] 
     then
-	if needsUpdate $seqmaqmapsingletab $genesinglegff $refseq $BINDIR/tagged_gff_to_counts_tab.pl
+	if needsUpdate $seqmapsingletab $genesinglegff $refseq $BINDIR/tagged_gff_to_counts_tab.pl
 	then
-	    $BINDIR/tagged_gff_to_counts_tab.pl -g ${genesinglegff} -s ${refseq} -f maqq${alqt}${lib} -N $libsize -c ${genetype} -o ${seqmaqmapsingletab}
-	    maqmapsingle_update=yes
+	    $BINDIR/tagged_gff_to_counts_tab.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${seqmapsingletab}
+	    registerFile $genesingletab temp
+	    mapsingle_update=yes
 	    updates=yes
 	fi
     fi
 
     # [TODO] not sure that we're actually using this now? useful for loading completed gene features onto gbrowse? fix multi-utr-len entry?!
     # all mappers
-    seqmaqmapcountsgff=${seqmaqmapgff%gff}counts.gff
-    if needsUpdate ${seqmaqmapcountsgff} $genegff $refseq $BINDIR/tagged_gff_to_counts.pl 
+    seqmapcountsgff=${seqmapgff%gff}counts.gff
+    if needsUpdate ${seqmapcountsgff} $genegff $refseq $BINDIR/tagged_gff_to_counts.pl 
     then
-	$BINDIR/tagged_gff_to_counts.pl -g ${genegff} -s ${refseq} -f maqmatch${lib} -N $libsize -c ${genetype} -o ${seqmaqmapcountsgff}
+	$BINDIR/tagged_gff_to_counts.pl -g ${genegff} -s ${refseq} -f ${ALIGN}match${lib} -N $libsize -c ${genetype} -o ${seqmapcountsgff}
+	registerFile $seqmapcountsgff result
     fi
 
     # and a separate single mapper run
-    seqmaqmapsinglecountsgff=${seqmaqmapsinglegff%gff}counts.gff
-    if needsUpdate ${seqmaqmapsinglecountsgff} $genesinglegff $refseq $BINDIR/tagged_gff_to_counts.pl 
+    seqmapsinglecountsgff=${seqmapsinglegff%gff}counts.gff
+    if needsUpdate ${seqmapsinglecountsgff} $genesinglegff $refseq $BINDIR/tagged_gff_to_counts.pl 
     then
-	$BINDIR/tagged_gff_to_counts.pl -g ${genesinglegff} -s ${refseq} -f maqq${alqt}${lib} -N $libsize -c ${genetype} -o ${seqmaqmapsinglecountsgff}
-    fi    
+	$BINDIR/tagged_gff_to_counts.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${seqmapsinglecountsgff}
+	registerFile $seqmapsinglecountsgff result
+    fi
 
     # crunch gff annotations down into single entries for each unique splicesite; in particular useful for gbrowse loading
 
     # all mappers first
-    maqmapcrunchgff=${maqmap}.crunch.gff
-    seqmaqmapcrunchgff=${maqmapcrunchgff%.crunch.gff}.${seq}.crunch.gff
+    mapcrunchgff=${map}.crunch.gff
+    seqmapcrunchgff=${mapcrunchgff%.crunch.gff}.${seq}.crunch.gff
 
-    if needsUpdate $seqmaqmapcrunchgff $maqmap $genegff $BINDIR/crunch_gff_with_counts.pl
+    if needsUpdate $seqmapcrunchgff $map $genegff $BINDIR/crunch_gff_with_counts.pl
     then
-	$BINDIR/crunch_gff_with_counts.pl -g ${genegff} -s ${refseq} -f maqmatch${lib} -N $libsize -c ${genetype} -o ${seqmaqmapcrunchgff}
+	$BINDIR/crunch_gff_with_counts.pl -g ${genegff} -s ${refseq} -f ${ALIGN}match${lib} -N $libsize -c ${genetype} -o ${seqmapcrunchgff}
+	registerFile $seqmapcrunchgff temp
 	crunch_update=yes
 	updates=yes
     fi
@@ -620,13 +734,14 @@ do
     # then crunch single mapper files
     if [ "$single" = "yes" ] 
     then
-	maqmapsinglecrunchgff=${maqmapsingle}.crunch.gff
+	mapsinglecrunchgff=${mapsingle}.crunch.gff
 
-	seqmaqmapsinglecrunchgff=${maqmapsinglecrunchgff%.crunch.gff}.${seq}.crunch.gff
+	seqmapsinglecrunchgff=${mapsinglecrunchgff%.crunch.gff}.${seq}.crunch.gff
 	
-	if needsUpdate $seqmaqmapsinglecrunchgff $maqmapsingle $genesinglegff $BINDIR/crunch_gff_with_counts.pl
+	if needsUpdate $seqmapsinglecrunchgff $mapsingle $genesinglegff $BINDIR/crunch_gff_with_counts.pl
 	then
-	    $BINDIR/crunch_gff_with_counts.pl -g ${genesinglegff} -s ${refseq} -f maqq${alqt}${lib} -N $libsize -c ${genetype} -o ${seqmaqmapsinglecrunchgff}
+	    $BINDIR/crunch_gff_with_counts.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${seqmapsinglecrunchgff}
+	    registerFile $seqmapsinglecrunchgff temp
 	    crunchsingle_update=yes
 	    updates=yes
 	fi
@@ -637,11 +752,12 @@ do
     if [ "${runuorf}" = "yes" ]
     then
 	# First all mappers
-	seqmaqmapuorftab=${seqmaqmaptab%.tab}.uorf.tab
+	seqmapuorftab=${seqmaptab%.tab}.uorf.tab
 			
-	if needsUpdate $seqmaqmapuorftab $maqmap $genegff $BINDIR/tagged_gff_to_counts_uorf.pl
+	if needsUpdate $seqmapuorftab $map $genegff $BINDIR/tagged_gff_to_counts_uorf.pl
 	then
-	    $BINDIR/tagged_gff_to_counts_uorf.pl -g ${genegff} -s ${refseq} -f maqmatch${lib} -N $libsize -c ${genetype}  -l $uorfutrcutofflen -o ${seqmaqmapuorftab}
+	    $BINDIR/tagged_gff_to_counts_uorf.pl -g ${genegff} -s ${refseq} -f ${ALIGN}match${lib} -N $libsize -c ${genetype}  -l $uorfutrcutofflen -o ${seqmapuorftab}
+	    registerFile $seqmapuorftab temp
 	    uorf_update=yes
 	    updates=yes
 	fi
@@ -649,11 +765,12 @@ do
 	# then single mappers if requested
  	if [ "$single" = "yes" ] 
 	then
-	    seqmaqmapsingleuorftab=${seqmaqmapsingletab%.tab}.uorf.tab
+	    seqmapsingleuorftab=${seqmapsingletab%.tab}.uorf.tab
 	
-	    if needsUpdate $seqmaqmapsingleuorftab $maqmapsingle $genesinglegff $BINDIR/tagged_gff_to_counts_uorf.pl
+	    if needsUpdate $seqmapsingleuorftab $mapsingle $genesinglegff $BINDIR/tagged_gff_to_counts_uorf.pl
 	    then
-		$BINDIR/tagged_gff_to_counts_uorf.pl -g ${genesinglegff} -s ${refseq} -f maqq${alqt}${lib} -N $libsize -c ${genetype} -l $uorfutrcutofflen -o ${seqmaqmapsingleuorftab}
+		$BINDIR/tagged_gff_to_counts_uorf.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -l $uorfutrcutofflen -o ${seqmapsingleuorftab}
+		registerFile $seqmapsingleuorftab temp
 		uorfsingle_update=yes
 		updates=yes
 	    fi
@@ -671,7 +788,7 @@ done
 
     Find lines including searchstring in a file named almost like basefilename, but with each sequence name in the global fastalist inserted before .suffix in the basefilename.
 
-    E.g. C<UpdateGFF $maqmapcrunchgff crunch.gff maqmatch>
+    E.g. C<UpdateGFF $mapcrunchgff crunch.gff ${ALIGN}match>
 
 =cut
 
@@ -693,17 +810,18 @@ function UpdateGFF()
 
 if [ "${crunch_update}" = "yes" ] 
 then
-    maqmapcrunchgff=${maqmap}.crunch.gff
-    UpdateGFF $maqmapcrunchgff crunch.gff maqmatch
+    mapcrunchgff=${map}.crunch.gff
+    UpdateGFF $mapcrunchgff crunch.gff ${ALIGN}match
+    registerFile $mapcrunchgff result
     updates=yes
 fi
 
 if [ "${crunchsingle_update}" = "yes" ] 
 then
     
-    maqmapsinglecrunchgff=${maqmapsingle}.crunch.gff    
-    UpdateGFF $maqmapsinglecrunchgff crunch.gff maqq${alqt}${lib}
-
+    mapsinglecrunchgff=${mapsingle}.crunch.gff    
+    UpdateGFF $mapsinglecrunchgff crunch.gff ${ALIGN}${single}${lib}
+    registerFile $mapsinglecrunchgff result
     updates=yes
 fi
 
@@ -713,7 +831,7 @@ fi
 
 =item UpdateTab(tabfilename,suffix)
 
-Update table tabfilename, by inserting sequence names from fasta list directly followed by the contents of per-sequence-sub-tabfilename with the sequnece name from the the global fastalist inserted before .suffix in the basefilename. E.g. C<UpdateTab ${maqmapsingleuorftab} uorf.tab>
+Update table tabfilename, by inserting sequence names from fasta list directly followed by the contents of per-sequence-sub-tabfilename with the sequnece name from the the global fastalist inserted before .suffix in the basefilename. E.g. C<UpdateTab ${mapsingleuorftab} uorf.tab>
 
 =cut
 
@@ -742,38 +860,38 @@ for seq in `cat $fastalist` ;
 do
 
     # check counts tab seqtabs
-    seqmaqmaptab=${maqmaptab%.tab}.${seq}.tab
+    seqmaptab=${maptab%.tab}.${seq}.tab
 
-    if needsUpdate $maqmaptab $seqmaqmaptab
+    if needsUpdate $maptab $seqmaptab
     then
-	maqmap_update=yes
+	map_update=yes
     fi
 
     # check single mapper counts tab seqtabs    
     if [ "$single" = "yes" ]
     then
-	seqmaqmapsingletab=${maqmapsingletab%.tab}.${seq}.tab
+	seqmapsingletab=${mapsingletab%.tab}.${seq}.tab
 
-	if needsUpdate $maqmapsingletab $seqmaqmapsingletab
+	if needsUpdate $mapsingletab $seqmapsingletab
 	then
-	    maqmapsingle_update=yes
+	    mapsingle_update=yes
 	fi
     fi
     
     # check uorf tab seqtabs
     if [ "${runuorf}" = "yes" ]
     then
-	seqmaqmapuorftab=${seqmaqmaptab%.tab}.uorf.tab
+	seqmapuorftab=${seqmaptab%.tab}.uorf.tab
 	
-	if needsUpdate $maqmapuorftab $seqmaqmapuorftab
+	if needsUpdate $mapuorftab $seqmapuorftab
 	then
 	    uorf_update=yes
 	fi
 
-	seqmaqmapsingleuorftab=${seqmaqmapsingletab%.tab}.uorf.tab
+	seqmapsingleuorftab=${seqmapsingletab%.tab}.uorf.tab
 	if [ "$single" = "yes" ]
 	then
-	    if needsUpdate $maqmapsingleuorftab $seqmaqmapsingleuorftab
+	    if needsUpdate $mapsingleuorftab $seqmapsingleuorftab
 	    then
 		uorfsingle_update=yes
 	    fi
@@ -781,26 +899,30 @@ do
     fi
 done
 
-if [ "${maqmap_update}" = "yes" ] 
+if [ "${map_update}" = "yes" ] 
 then
-    UpdateTab ${maqmaptab} tab
+    UpdateTab ${maptab} tab
+    registerFile ${maptab} result
 fi
 
-if [ "${maqmapsingle_update}" = "yes" ] 
+if [ "${mapsingle_update}" = "yes" ] 
 then
-    UpdateTab ${maqmapsingletab} tab
+    UpdateTab ${mapsingletab} tab
+    registerFile ${mapsingletab} result
 fi
 
 # join the uORF tabs
 
 if [ "${uorf_update}" = "yes" ]
 then
-    UpdateTab $maqmapuorftab uorf.tab
+    UpdateTab $mapuorftab uorf.tab
+    registerFile ${mapuorftab} result
 fi
   
 if [ "$uorfsingle_update" = "yes" ]
 then
-    UpdateTab ${maqmapsingleuorftab} uorf.tab
+    UpdateTab ${mapsingleuorftab} uorf.tab
+    registerFile ${mapsingleuorftab} result
 fi
 
 : <<'POD_FUNC'
@@ -818,19 +940,20 @@ function ExtractSites()
     optdesc=$1
     optstr=$2
 
-    splicesitesout=${maqmap}.${optdesc}.splicesites.out
+    splicesitesout=${map}.${optdesc}.splicesites.out
     
     splicesitesout_update=no
 
     for seq in `cat $fastalist`
     do
-	genegff=${maqmap}.${seq}.gene.gff
+	genegff=${map}.${seq}.gene.gff
 	refseq=${reffile%.fasta}.${seq}.fasta
-	seqsplicesitesout=${maqmap}.${seq}.${optdesc}.splicesites.out
+	seqsplicesitesout=${map}.${seq}.${optdesc}.splicesites.out
 		
 	if needsUpdate $splicesitesout $reffile $genegff $BINDIR/extract_splicesites.pl $SEQLOGOBIN
 	then
-	    $BINDIR/extract_splicesites.pl -g ${genegff} -s ${refseq} -f maqmatch${lib} -c ${genetype} -o $seqsplicesitesout -b $beforeag -a $afterag $optstr
+	    $BINDIR/extract_splicesites.pl -g ${genegff} -s ${refseq} -f ${ALIGN}match${lib} -c ${genetype} -o $seqsplicesitesout -b $beforeag -a $afterag $optstr
+	    registerFile $seqsplicesitesout temp
 	    splicesitesout_update=yes
 	fi
     done
@@ -840,14 +963,16 @@ function ExtractSites()
 	echo -n > $splicesitesout
 	for seq in `cat $fastalist`
 	do
-	    seqsplicesitesout=${maqmap}.${seq}.${optdesc}.splicesites.out
+	    seqsplicesitesout=${map}.${seq}.${optdesc}.splicesites.out
 	    cat $seqsplicesitesout >> $splicesitesout
 	done    
+	registerFile $splicesitesout temp
 
 	startpos=$(( $beforeag + 2 ))
 	optdescnodot=${optdesc//./ }
 	
 	$SEQLOGOBIN -f $splicesitesout -h 8 -w 26 -n -Y -c -k1 -s -${startpos} -d 1 -t "Spliced leader Addition Site logo ${optdescnodot} ${lib}" -F PDF -o $splicesitesout
+	registerFile ${splicesitesout}.pdf result
     fi
     
     splicesitesstatsummary=$splicesitesout.stat.summary
@@ -855,8 +980,9 @@ function ExtractSites()
     then
 	$BINDIR/splicesite_stats.pl < $splicesitesout > $splicesitesstatsummary
 #	perl -e '%accdinuc; my $sum=0; print "Dinuc\tNum\tFraction\n"; while ($str=<STDIN>) { chomp $str; my $dinuc=substr $str,-8,2; $accdinuc{$dinuc}++; $sum++} for my $dinuc (sort { $accdinuc{$b}<=>$accdinuc{$a}} keys %accdinuc) { print $dinuc,"\t", $accdinuc{$dinuc}, "\t", sprintf("%.2f",$accdinuc{$dinuc}/$sum), "\n"; }' 
+	registerFile $splicesitesstatsummary result
     fi
-		
+
 	# max p
 	# reverse
 
@@ -882,7 +1008,7 @@ Function to make filtered sub-tables from the big ones
 
 createsubtable basetab_filename subtabname converting_awk_script [comment_for_summary]
 
-E.g. C<CreateSubTable $maqmapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "q${alqt}-mappers">
+E.g. C<CreateSubTable $mapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "${single}-mappers">
 
 =cut
 
@@ -903,7 +1029,7 @@ function CreateSubTable()
     fi
 
     subtab=${basetab%.tab}.${tabname}.tab
-    if needsUpdate $subtab $maqmaptab
+    if needsUpdate $subtab $maptab
     then
 	echo -n > $subtab
 	for seq in `cat $fastalist`
@@ -912,7 +1038,7 @@ function CreateSubTable()
 #	    echo try awk \"$awkscript\" $seqbasetab to $subtab
 	    awk "$awkscript" $seqbasetab >> $subtab
 	done
-	
+	registerFile $subtab temp
 	updates=yes
     fi
      
@@ -926,8 +1052,8 @@ function CreateSubTable()
 
 Get rid of all but one header line after joining.
 
-E.g. C<CreateSubTable $maqmaptab "genes_with_major_UTR_lt2k" 'BEGIN ...$10}'> and then 
-            C<OneHeader $maqmaptab "genes_with_major_UTR_lt2k" "Name">
+E.g. C<CreateSubTable $maptab "genes_with_major_UTR_lt2k" 'BEGIN ...$10}'> and then 
+            C<OneHeader $maptab "genes_with_major_UTR_lt2k" "Name">
 
 =cut
 
@@ -937,7 +1063,7 @@ POD_FUNC
 function OneHeader()
 {
     # oneheader basetab_filename subtabname header_starts_with_word
-    local basetab=$1 #maqmap/maqmapsingle
+    local basetab=$1 #map/mapsingle
     local tabname=$2
     local headerstart=$3
 
@@ -966,9 +1092,9 @@ function RUTRlenstats()
 {
     tabname=$1
     liblabel=$2
-    subtab=${maqmap}.${tabname}.tab
+    subtab=${map}.${tabname}.tab
 
-    cat > ${maqmap}.utrlen.R <<-RUTRLEN
+    cat > ${map}.utrlen.R <<-RUTRLEN
 	lib<-read.table("${subtab}", header = TRUE, sep = "\\t");
 
 	ctcountutrlen <- cor.test(lib\$Count, lib\$fpUTRlen)
@@ -995,12 +1121,16 @@ function RUTRlenstats()
 
 	RUTRLEN
 
-    R CMD BATCH --no-save --slave ${maqmap}.utrlen.R /dev/null
+    R CMD BATCH --no-save --slave ${map}.utrlen.R /dev/null
+
+    registerFile ${map}.utrlen.R temp
+    registerFile ${subtab%.tab}.UTRlen.genes.pdf result
+    registerFile ${subtab%.tab}.UTRlen.pdf result
 }
 
-summary=${maqmaptab%.tab}.summary
+summary=${maptab%.tab}.summary
 
-if needsUpdate $summary $maqmap.txt ${maqmapcrunchgff} $maqmaptab ${maqmapuorftab} ${maqmapsingletab} ${maqmapsingleuorftab} ${maqmapsingle}.txt $BINDIR/sites_per_gene_summary.pl $BINDIR/median.pl
+if needsUpdate $summary $map.txt ${mapcrunchgff} $maptab ${mapuorftab} ${mapsingletab} ${mapsingleuorftab} ${mapsingle}.txt $BINDIR/sites_per_gene_summary.pl $BINDIR/median.pl
 then
     echo -n > $summary
 
@@ -1008,74 +1138,74 @@ then
     echo "${lib} Number of reads: $libsize" >> $summary
 
     echo -n "${lib} Number of reads aligned ok: " >> $summary
-    wc -l $maqmap.txt |awk '{ print "\t",$1 }' >> $summary
+    wc -l $map.txt |awk '{ print "\t",$1 }' >> $summary
 
     # percent aligned ok.. 
 
-    echo -n "${lib} number of maq singlemappers, q >= ${alqt}: " >> $summary
-    wc -l ${maqmapsingle}.txt |awk '{ print "\t",$1 }' >> $summary
+    echo -n "${lib} number of $ALIGN singlemappers, (maq: q >= ${alqt}, bowtie: one reportable): " >> $summary
+    wc -l ${mapsingle}.txt |awk '{ print "\t",$1 }' >> $summary
 
-    echo -n "${lib} Number of maq multimappers, q == 0: " >> $summary
-    wc -l ${maqmap}.multi.txt |awk '{ print "\t",$1 }' >> $summary
+    echo -n "${lib} Number of $ALIGN multimappers, (maq: q == 0, bowtie more reportable): " >> $summary
+    wc -l ${map}.multi.txt |awk '{ print "\t",$1 }' >> $summary
 
     # use a perl script for the median calculations 
 
-    echo -n "${lib} Maq single mappers alignment quality: " >> $summary
-    awk '($7>0) {print $7;}' ${maqmap}.txt | $BINDIR/median.pl >> $summary
+    echo -n "${lib} ${ALIGN} single mappers alignment quality: " >> $summary
+    awk '($7>0) {print $7;}' ${map}.txt | $BINDIR/median.pl >> $summary
 
-    echo -n "${lib} Maq single mappers mismatches: " >> $summary
-    awk '($7>0) {print $10;}' ${maqmap}.txt | $BINDIR/median.pl >> $summary
+    echo -n "${lib} ${ALIGN} single mappers mismatches: " >> $summary
+    awk '($7>0) {print $10;}' ${map}.txt | $BINDIR/median.pl >> $summary
     
-    echo -n "${lib} Maq all mapped reads mismatches: " >> $summary
-    awk '{print $10;}' ${maqmap}.txt | $BINDIR/median.pl >> $summary
+    echo -n "${lib} $ALIGN all mapped reads mismatches: " >> $summary
+    awk '{print $10;}' ${map}.txt | $BINDIR/median.pl >> $summary
     
     echo -n "${lib} " >> $summary; 
     echo -n "Number of splicesites " >> $summary
-    grep -c maqmatch ${maqmapcrunchgff} >> $summary
+    grep -c ${ALIGN}match ${mapcrunchgff} >> $summary
 
     echo -n "${lib} ">> $summary
     echo -n "Genes with counts">> $summary
-    awk 'BEGIN {tick = 0} ($4 > 0) {tick=tick+1} END {print " ",tick}' $maqmaptab >> $summary;
+    awk 'BEGIN {tick = 0} ($4 > 0) {tick=tick+1} END {print " ",tick}' $maptab >> $summary;
 
     #echo -n "${lib} Genes_with_lt2k_UTR" >> $summary
-    #awk 'BEGIN {tick = 0} ($4>0 && $11 < 2000) {tick=tick+1} END {print " ",tick}' $maqmaptab >> $summary
+    #awk 'BEGIN {tick = 0} ($4>0 && $11 < 2000) {tick=tick+1} END {print " ",tick}' $maptab >> $summary
 
     echo -n "${lib} Genes_with_gt2k_lt5k_UTR" >> $summary
-    awk 'BEGIN {tick = 0} ($4>0 && $11 >= 2000 && $11<5000) {tick=tick+1} END {print " ",tick}' $maqmaptab >> $summary
+    awk 'BEGIN {tick = 0} ($4>0 && $11 >= 2000 && $11<5000) {tick=tick+1} END {print " ",tick}' $maptab >> $summary
 
-    CreateSubTable $maqmaptab "genes_with_major_site_internal" '($4 > 0 && $9 < 0) {print}'
-    CreateSubTable $maqmaptab "genes_with_only_internal_sites" '($4 > 0 && $12 < 0) {print}'
+    CreateSubTable $maptab "genes_with_major_site_internal" '($4 > 0 && $9 < 0) {print}'
+    CreateSubTable $maptab "genes_with_only_internal_sites" '($4 > 0 && $12 < 0) {print}'
 
-    CreateSubTable $maqmaptab "genes_with_shortest_UTR_gt2k" '($11 > 2000) {print}'
-    CreateSubTable $maqmaptab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}'
+    CreateSubTable $maptab "genes_with_shortest_UTR_gt2k" '($11 > 2000) {print}'
+    CreateSubTable $maptab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}'
     
-    CreateSubTable $maqmaptab "genes_with_major_UTR_lt2k" 'BEGIN {print "Name\tPos\tfpUTRlen\tCount"} ($4 > 0 && $9 <= 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}'
+    CreateSubTable $maptab "genes_with_major_UTR_lt2k" 'BEGIN {print "Name\tPos\tfpUTRlen\tCount"} ($4 > 0 && $9 <= 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}'
         
-    OneHeader $maqmaptab "genes_with_major_UTR_lt2k" "Name"
+    OneHeader $maptab "genes_with_major_UTR_lt2k" "Name"
 
     if [ "$single" = "yes" ] 
     then
-        CreateSubTable $maqmapsingletab "genes_with_major_site_internal" '($4 > 0 && $9 < 0) {print}' "q${alqt}-mappers"
-	CreateSubTable $maqmapsingletab "genes_with_only_internal_sites" '($4 > 0 && $12 < 0) {print}' "q${alqt}-mappers"
+        CreateSubTable $mapsingletab "genes_with_major_site_internal" '($4 > 0 && $9 < 0) {print}' "${single}-mappers"
+	CreateSubTable $mapsingletab "genes_with_only_internal_sites" '($4 > 0 && $12 < 0) {print}' "${single}-mappers"
 
-	CreateSubTable $maqmapsingletab "genes_with_shortest_UTR_gt2k" '($11 > 2000) {print}' "q${alqt}-mappers"
-	CreateSubTable $maqmapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "q${alqt}-mappers"
+	CreateSubTable $mapsingletab "genes_with_shortest_UTR_gt2k" '($11 > 2000) {print}' "${single}-mappers"
+	CreateSubTable $mapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "${single}-mappers"
     
-	CreateSubTable $maqmapsingletab "genes_with_major_UTR_lt2k" 'BEGIN {print "Name\tPos\tfpUTRlen\tCount"} ($4 > 0 && $9 <= 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}' "q${alqt}-mappers"
+	CreateSubTable $mapsingletab "genes_with_major_UTR_lt2k" 'BEGIN {print "Name\tPos\tfpUTRlen\tCount"} ($4 > 0 && $9 <= 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}' "${single}-mappers"
         
-	OneHeader $maqmapsingletab "genes_with_major_UTR_lt2k" "Name"
+	OneHeader $mapsingletab "genes_with_major_UTR_lt2k" "Name"
     fi  
     
     # count uORFs - no need for a separate tab, yet?
     if [ "$runuorf" = "yes" ]
     then
 	echo -n "$lib genes with at least one uORF: " >> $summary
-	awk 'BEGIN { sum=0 } ($14 >0) { sum=sum+1; } END { print sum }' $maqmapuorftab >> $summary
+	awk 'BEGIN { sum=0 } ($14 >0) { sum=sum+1; } END { print sum }' $mapuorftab >> $summary
 
 	if [ "$single" = "yes" ] 
 	then
-	    echo -n "$lib q${alqt} genes with at least one uORF: " >> $summary
-	    awk 'BEGIN { sum=0 } ($14 >0) { sum=sum+1; } END { print sum }' $maqmapsingleuorftab >> $summary
+	    echo -n "$lib ${single} genes with at least one uORF: " >> $summary
+	    awk 'BEGIN { sum=0 } ($14 >0) { sum=sum+1; } END { print sum }' $mapsingleuorftab >> $summary
 	fi
     fi
 
@@ -1086,8 +1216,10 @@ then
     # process tab to produce one with all UTRlens with counts expanded on separate lines (or get from crunch gff?) 
     # note RAW counts on the individual UTRs! correct for line separated tab seems to be the most straightforward
 
-    allposutrs=${maqmap}.all_pos_UTRs_lt2k.tab
-    perl -e 'print "Name\tPos\tfpUTRlen\tCount\n"; while(<STDIN>) { chomp; @r=split(/\t+/); if ($r[3] > 0) { @counts=split(/,/,$r[5]); @UTRlen=split(/,/,$r[7]); for ($i=0; $i<@counts;$i++) { if($UTRlen[$i]>0 && $UTRlen[$i]<2000) { $normcount=$counts[$i]/'$libsize'*1000000; print "$r[0]\t$r[1]\t$UTRlen[$i]\t".sprintf("%.0f",$normcount)."\n"; } } } }' < $maqmaptab > $allposutrs
+    allposutrs=${map}.all_pos_UTRs_lt2k.tab
+    perl -e 'print "Name\tPos\tfpUTRlen\tCount\n"; while(<STDIN>) { chomp; @r=split(/\t+/); if ($r[3] > 0) { @counts=split(/,/,$r[5]); @UTRlen=split(/,/,$r[7]); for ($i=0; $i<@counts;$i++) { if($UTRlen[$i]>0 && $UTRlen[$i]<2000) { $normcount=$counts[$i]/'$libsize'*1000000; print "$r[0]\t$r[1]\t$UTRlen[$i]\t".sprintf("%.0f",$normcount)."\n"; } } } }' < $maptab > $allposutrs
+
+    registerFile $allposutrs result
 
     RUTRlenstats "genes_with_major_UTR_lt2k" "major splice site below 2 kbp"
     RUTRlenstats "all_pos_UTRs_lt2k" "all UTRS between 0 nt and 2 knt"
@@ -1095,16 +1227,16 @@ then
     # perl script for the median; a heredoc might be better, but its a little cumbersome to edit 
 
     echo "$lib Number of sites/gene counting UTRs between 0 and 2000 nt " >> $summary
-    $BINDIR/sites_per_gene_summary.pl < $maqmaptab >> $summary
+    $BINDIR/sites_per_gene_summary.pl < $maptab >> $summary
 
     # expression level summary: tags/gene measures, plot and a little tab with the 30 most highly expressed ones
     # including count 0 genes for some kind of completeness. some tuning can be achieved using the gene feature type.
  
-    topcounts=${maqmaptab%tab}topcounts
+    topcounts=${maptab%tab}topcounts
 
-    awk 'BEGIN { print "Name","Count","Desc"; } ($5 >= 0) { print $1,$5,$13; }' $maqmaptab > $topcounts
+    awk 'BEGIN { print "Name","Count","Desc"; } ($5 >= 0) { print $1,$5,$13; }' $maptab > $topcounts
 
-    cat > ${maqmap}.tags.R <<-RTAGS
+    cat > ${map}.tags.R <<-RTAGS
 	lib<-read.table("${topcounts}", header = TRUE, sep = " ");
         
 	meancount <- mean(lib\$Count)
@@ -1121,25 +1253,27 @@ then
 
 	RTAGS
     
-    R CMD BATCH --no-save --slave ${maqmap}.tags.R /dev/null
-
+    R CMD BATCH --no-save --slave ${map}.tags.R /dev/null
+    registerFile ${map}.tags.R temp
+    registerFile ${topcounts} temp
+    
     showtoptagged=40
     echo >> $summary
     echo "Genes with the $showtoptagged highest tag counts" >> $summary    
     head -1 $topcounts >> $summary
     grep -v ^Name $topcounts |sort -k2,2nr | head -$showtoptagged >> $summary
 
-
+    registerFile $summary result
     updates=yes
 fi
 
 if [ "$updates" = "no" ]
 then
-    log=${maqmap}.log
+    log=${map}.log
     rundate=`date`
     echo "Project was already up to date. Nothing to do. Please update date on appropriate input/program/intermediate results files to force results updates. ($rundate)" | tee -a $log
 else
-    log=${maqmap}.log
+    log=${map}.log
     rundate=`date`
     echo "Project has been brought up to date. ($rundate)" | tee -a $log
 fi
