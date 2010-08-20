@@ -216,9 +216,9 @@ function registerFile()
 
 =head2 cleanCategory(category)
 
- USAGE: cleanCategory category
- 
-Delete files registered with the cleanup system. Will recursively delete directories if registered. Category is currently limited to C<result|temp>.
+USAGE: cleanCategory category Delete files registered with the
+cleanup system. Will recursively delete directories if
+registered. Category is currently limited to C<result|temp>.
 
 =cut
 
