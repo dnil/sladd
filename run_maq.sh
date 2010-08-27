@@ -213,7 +213,7 @@ fi
 
 # uses pipelinefunk.sh for needsUpdate, registerFile etc.
 
-. pipelinefunk.sh
+. $BINDIR/pipelinefunk.sh
 
 # CALLED will contain a complete pathname for this script
 CALLED=$0
