@@ -357,33 +357,71 @@ then
 	splitnr=0
 
     # check if bfq does not exist, or is older than fastq
+	bfqupdate="no"
+	arglist=""
 	for splittagfile in ${tagfileprefix}[a-z][a-z]
 	do
 	    bfqfile=${splittagfile}.bfq
 	    if needsUpdate $bfqfile $splittagfile
-	    then	    
-		$MAQBIN fastq2bfq $splittagfile $bfqfile
+	    then
+		arglist=$arglist"$splittagfile $bfqfile "
 		registerFile $bfqfile temp
-		updates=yes
+		bfqupdate="yes"
 	    fi
+	done
+	    
+	if [ "$bfqupdate" = "yes" ]
+	then
+	    echo "DEBUG: run xargs -P $NPROC -n 2 $MAQBIN fastq2bfq ON $arglist."
+	    echo $arglist | xargs -P $NPROC -n 2 $MAQBIN fastq2bfq
+	    updates="yes"
+	fi
+	    
+	declare -a logs
+	lognr=0
+	    
+	splitmapupdate="no"
+	arglist=""
 
+	for splittagfile in ${tagfileprefix}[a-z][a-z]
+	do
+	    bfqfile=${splittagfile}.bfq
 	    splitmap=${splittagfile}_vs_${reffile%.fasta}.${ALIGN}map
+	    splitmaplog=${splitmap}.log
 
 	    if needsUpdate $splitmap $refbfa $bfqfile
 	    then
-		log=${map}.log
+		log=${splitmaplog}
+		logs[$lognr]=$log
+		lognr=$(( $lognr + 1 ))
+	    
 		rundate=`date`
-		echo "map -n 3 $splitmap $refbfa $bfqfile : (${rundate})" >> ${log}
-		$MAQBIN map -n 3 $splitmap $refbfa $bfqfile 2>> ${log}
+		echo "$MAQBIN map -n 3 $splitmap $refbfa $bfqfile : (${rundate})" >> ${log}
+
+		arglist=$arglist"$splitmap $refbfa $bfqfile ${log} "
+		splitmapupdate="yes"
+
 		registerFile $splitmap temp
-		updates=yes
-		mapupdate="yes"
 	    fi
 	    
 	    splittagfiles[$splitnr]=$splittagfile
 	    splitmap[$splitnr]=$splitmap
 	    splitnr=$(( $splitnr + 1 ))
 	done
+
+	if [ "$splitmapupdate" = "yes" ]
+	then
+	    echo $arglist | xargs -P $NPROC -n 4 sh -c "$MAQBIN map -n 3 \$1 \$2 \$3 2>> \$4" -
+	
+	    for mylog in ${logs[@]}
+	    do
+		cat $mylog >> ${map}.log
+		rm $mylog
+	    done
+
+	    updates="yes"
+	    mapupdate="yes"
+	fi
 
 	if [ "$mapupdate" = "yes" ] 
 	then
