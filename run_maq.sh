@@ -350,7 +350,7 @@ then
 	if needsUpdate $tagfile.done.split $tagfile
 	then
 	    split -l 8000000 $tagfile ${tagfileprefix}
-	    echo ${tagfileprefix}[a-z][a-z] > $tagfile.done.split
+	    echo ${tagfileprefix}[a-z][a-z] > $tagfile.done.split 
 	    registerFile $tagfile.done.split temp
 	fi
 
@@ -361,6 +361,9 @@ then
 	arglist=""
 	for splittagfile in ${tagfileprefix}[a-z][a-z]
 	do
+	    #now register the split tagfile here, as we didn't have the name direcly available in the last loop
+	    registerFile $splittagfile temp
+
 	    bfqfile=${splittagfile}.bfq
 	    if needsUpdate $bfqfile $splittagfile
 	    then

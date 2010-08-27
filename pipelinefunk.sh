@@ -162,7 +162,7 @@ function registerFile()
     register=${pipelineregisterdir}/.pipeline.register.$category
 
     # create on first use
-    if [! -e $register]
+    if [ ! -e $register]
     then
 	touch $register
     fi
@@ -232,18 +232,25 @@ CLEAN_FUNCTION_DOC
 function cleanCategory()
 {
     local category=$1
-       
-    for file in `cat ${pipelineregisterdir}/.pipeline.register.${category}`
-    do
-	if [ -d $file ] 
-	then
-	    rm -rf $file
-	else
-	    rm $file
-	fi
-    done
 
-    rm ${pipelineregisterdir}/.pipeline.register.${category}
+    register=${pipelineregisterdir}/.pipeline.register.${category}
+ 
+    if [ -e $register ] 
+    then
+	for file in `cat `
+	do
+	    if [ -d $file ] 
+	    then
+		rm -rf $file
+	    else
+		rm $file
+	    fi
+	done
+	rm ${pipelineregisterdir}/.pipeline.register.${category}
+	echo "Cleaned up ${category} files."
+    else
+	echo "No register file $register found. Directory was perhaps already clean?"
+    fi
 }
 
 : << 'DOC_DIRECTIVE'
