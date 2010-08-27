@@ -159,9 +159,14 @@ function registerFile()
     local savefile=$1
     local category=$2
 
-    # test file..
     register=${pipelineregisterdir}/.pipeline.register.$category
 
+    # create on first use
+    if [! -e $register]
+    then
+	touch $register
+    fi
+      
     # check that it's not already on the list?
     grep -x $savefile ${register} > /dev/null
     if [ $? -eq 0 ]
