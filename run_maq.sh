@@ -480,13 +480,13 @@ then
     fi
 fi
 
-single=q${alqt}
+singlelabel=q${alqt}
 if [ "$ALIGN" == "bowtie" ]
 then 
-    single=single
+    singlelabel=single
 fi
 
-mapsingle=${map}.${single}
+mapsingle=${map}.${singlelabel}
 
 #if [ "$ALIGN" == "bowtie" ]
 #then
@@ -499,9 +499,18 @@ mapsingle=${map}.${single}
 
 if [ "$ALIGN" == "bowtie" ]
 then
+
+        # bowtie has number of matches to other places (well, "the
+        # number of other instances where the same sequence aligned
+        # against the same reference characters as were aligned
+        # against in the reported alignment") in col 7 However, this
+        # sounds a little unsafe "This is not the number of other
+        # places the read aligns with the same number of mismatches."
+        # With --best -M 1, I still think this is appropriate, but
+        # further evaluation would be good.
 	awk '($7==0) {print;}' < ${map} > ${mapsingle}.txt 
 	registerFile ${mapsingle}.txt temp
-	awk '($7>=2) {print;}' < ${map} > ${map}.multi.txt
+	awk '($7>=1) {print;}' < ${map} > ${map}.multi.txt
 	registerFile ${map}.multi.txt temp
 fi
 
@@ -509,8 +518,14 @@ if [ "$ALIGN" == "maq" ]
 then
     if needsUpdate ${mapsingle}.txt ${map}.txt
     then
+
+	# With this crude filtering approach, we get rid of bona fide
+	# multimappers, as well as near multimappers and other far
+	# less than perfectly aligning reads.
+
 	awk '($7>='$alqt') {print;}' < ${map}.txt > ${mapsingle}.txt
 	registerFile ${mapsingle}.txt temp
+	# maq multimappers are given alignment quality 0. 
 	awk '($7==0) {print;}' < ${map}.txt > ${map}.multi.txt 
 	registerFile ${map}.multi.txt temp
     fi
@@ -552,9 +567,9 @@ if [ "$single" = "yes" ]
 then
     if [ "$ALIGN" == "maq" ]
     then
-	if needsUpdate $mapsinglegff $map ${mapsingle}.txt $BINDIR/maqmaptxt2gff.pl
+	if needsUpdate $mapsinglegff ${mapsingle}.txt $refsizes $BINDIR/maqmaptxt2gff.pl
 	then
-	    $BINDIR/maqmaptxt2gff.pl -s $refsizes -l ${lib} -f ${ALIGN}${single}${lib} < ${mapsingle}.txt > ${mapsinglegff};
+	    $BINDIR/maqmaptxt2gff.pl -s $refsizes -l ${lib} -f ${ALIGN}${singlelabel}${lib} < ${mapsingle}.txt > ${mapsinglegff};
 	    registerFile ${mapsinglegff} result
 	    updates=yes
 	fi
@@ -562,7 +577,7 @@ then
     then
 	if needsUpdate $mapsinglegff $mapsingle $BINDIR/bowtie_to_gff.pl
 	then
-	    $BINDIR/bowtie_to_gff.pl -s $refsizes -l ${lib} -f ${ALIGN}${single}${lib} < ${mapsingle} > ${mapsinglegff};
+	    $BINDIR/bowtie_to_gff.pl -s $refsizes -l ${lib} -f ${ALIGN}${singlelabel}${lib} < ${mapsingle} > ${mapsinglegff};
 	    registerFile ${mapsinglegff} result
 	    updates=yes
 	fi
@@ -677,7 +692,7 @@ do
 	    log=${map}.log
 	    rundate=`date`
 	    echo "$seq : per_gene_splicesite_info ($rundate) : single mappers : " >> $log
-	    $BINDIR/per_gene_splicesite_info.pl -g ${refseqgff} -s ${refseq} -t ${seqmapsinglegff} -f ${ALIGN}${single}${lib} -o ${genesinglegff} -c ${genetype} -U ${utrcutoff} >> $log
+	    $BINDIR/per_gene_splicesite_info.pl -g ${refseqgff} -s ${refseq} -t ${seqmapsinglegff} -f ${ALIGN}${singlelabel}${lib} -o ${genesinglegff} -c ${genetype} -U ${utrcutoff} >> $log
 	    registerFile $genesinglegff result
 	fi
     fi
@@ -703,15 +718,15 @@ do
 	aslogsingle=${mapsingle}.antisense.log
 	rundate=`date`
 	echo "$seq : list_antisense_splicesites ($rundate)" >> $aslogsingle
-	$BINDIR/list_antisense_splicesites.pl -g ${refseqgff} -s ${refseq} -t ${seqmapsinglegff} -f ${ALIGN}${single}${lib} -o ${astagsinglegff} -c ${genetype} >> $aslogsingle
+	$BINDIR/list_antisense_splicesites.pl -g ${refseqgff} -s ${refseq} -t ${seqmapsinglegff} -f ${ALIGN}${singlelabel}${lib} -o ${astagsinglegff} -c ${genetype} >> $aslogsingle
 	registerFile $astagsinglegff temp
     fi
 
     astagsinglecrunchgff=${mapsinglegff%.gff}.${seq}.astags.crunch.gff
     if needsUpdate $astagsinglecrunchgff $mapsingle $astagsinglegff $BINDIR/crunch_gff_with_counts.pl
     then
-	$BINDIR/crunch_gff_with_counts.pl -g ${astagsinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${astagsinglecrunchgff}
-	regsiterFile $astagsinglecrunchgff result
+	$BINDIR/crunch_gff_with_counts.pl -g ${astagsinglegff} -s ${refseq} -f ${ALIGN}${singlelabel}${lib} -N $libsize -c ${genetype} -o ${astagsinglecrunchgff}
+	registerFile $astagsinglecrunchgff result
 #	crunchsingle_update=yes
 	updates=yes
     fi
@@ -755,7 +770,7 @@ do
     seqmapsinglecountsgff=${seqmapsinglegff%gff}counts.gff
     if needsUpdate ${seqmapsinglecountsgff} $genesinglegff $refseq $BINDIR/tagged_gff_to_counts.pl 
     then
-	$BINDIR/tagged_gff_to_counts.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${seqmapsinglecountsgff}
+	$BINDIR/tagged_gff_to_counts.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${singlelabel}${lib} -N $libsize -c ${genetype} -o ${seqmapsinglecountsgff}
 	registerFile $seqmapsinglecountsgff result
     fi
 
@@ -782,7 +797,7 @@ do
 	
 	if needsUpdate $seqmapsinglecrunchgff $mapsingle $genesinglegff $BINDIR/crunch_gff_with_counts.pl
 	then
-	    $BINDIR/crunch_gff_with_counts.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -o ${seqmapsinglecrunchgff}
+	    $BINDIR/crunch_gff_with_counts.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${singlelabel}${lib} -N $libsize -c ${genetype} -o ${seqmapsinglecrunchgff}
 	    registerFile $seqmapsinglecrunchgff temp
 	    crunchsingle_update=yes
 	    updates=yes
@@ -811,7 +826,7 @@ do
 	
 	    if needsUpdate $seqmapsingleuorftab $mapsingle $genesinglegff $BINDIR/tagged_gff_to_counts_uorf.pl
 	    then
-		$BINDIR/tagged_gff_to_counts_uorf.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${single}${lib} -N $libsize -c ${genetype} -l $uorfutrcutofflen -o ${seqmapsingleuorftab}
+		$BINDIR/tagged_gff_to_counts_uorf.pl -g ${genesinglegff} -s ${refseq} -f ${ALIGN}${singlelabel}${lib} -N $libsize -c ${genetype} -l $uorfutrcutofflen -o ${seqmapsingleuorftab}
 		registerFile $seqmapsingleuorftab temp
 		uorfsingle_update=yes
 		updates=yes
@@ -862,7 +877,7 @@ if [ "${crunchsingle_update}" = "yes" ]
 then
     
     mapsinglecrunchgff=${mapsingle}.crunch.gff    
-    UpdateGFF $mapsinglecrunchgff crunch.gff ${ALIGN}${single}${lib}
+    UpdateGFF $mapsinglecrunchgff crunch.gff ${ALIGN}${singlelabel}${lib}
     registerFile $mapsinglecrunchgff result
     updates=yes
 fi
@@ -1050,7 +1065,7 @@ Function to make filtered sub-tables from the big ones
 
 createsubtable basetab_filename subtabname converting_awk_script [comment_for_summary]
 
-E.g. C<CreateSubTable $mapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "${single}-mappers">
+E.g. C<CreateSubTable $mapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "${singlelabel}-mappers">
 
 =cut
 
@@ -1227,13 +1242,13 @@ then
 
     if [ "$single" = "yes" ] 
     then
-        CreateSubTable $mapsingletab "genes_with_major_site_internal" '($4 > 0 && $9 < 0) {print}' "${single}-mappers"
-	CreateSubTable $mapsingletab "genes_with_only_internal_sites" '($4 > 0 && $12 < 0) {print}' "${single}-mappers"
+        CreateSubTable $mapsingletab "genes_with_major_site_internal" '($4 > 0 && $9 < 0) {print}' "${singlelabel}-mappers"
+	CreateSubTable $mapsingletab "genes_with_only_internal_sites" '($4 > 0 && $12 < 0) {print}' "${singlelabel}-mappers"
 
-	CreateSubTable $mapsingletab "genes_with_shortest_UTR_gt2k" '($11 > 2000) {print}' "${single}-mappers"
-	CreateSubTable $mapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "${single}-mappers"
+	CreateSubTable $mapsingletab "genes_with_shortest_UTR_gt2k" '($11 > 2000) {print}' "${singlelabel}-mappers"
+	CreateSubTable $mapsingletab "genes_with_major_UTR_gt2k" '($9 > 2000) {print}' "${singlelabel}-mappers"
     
-	CreateSubTable $mapsingletab "genes_with_major_UTR_lt2k" 'BEGIN {print "Name\tPos\tfpUTRlen\tCount"} ($4 > 0 && $9 <= 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}' "${single}-mappers"
+	CreateSubTable $mapsingletab "genes_with_major_UTR_lt2k" 'BEGIN {print "Name\tPos\tfpUTRlen\tCount"} ($4 > 0 && $9 <= 2000 && $9 >= 0 ) {print $1"\t"$2"\t"$9"\t"$10}' "${singlelabel}-mappers"
         
 	OneHeader $mapsingletab "genes_with_major_UTR_lt2k" "Name"
     fi  
@@ -1246,7 +1261,7 @@ then
 
 	if [ "$single" = "yes" ] 
 	then
-	    echo -n "$lib ${single} genes with at least one uORF: " >> $summary
+	    echo -n "$lib ${singlelabel} genes with at least one uORF: " >> $summary
 	    awk 'BEGIN { sum=0 } ($14 >0) { sum=sum+1; } END { print sum }' $mapsingleuorftab >> $summary
 	fi
     fi
