@@ -162,13 +162,13 @@ function registerFile()
     register=${pipelineregisterdir}/.pipeline.register.$category
 
     # create on first use
-    if [ ! -e $register]
+    if [ ! -e $register ]
     then
 	touch $register
     fi
       
     # check that it's not already on the list?
-    grep -x $savefile ${register} > /dev/null
+    grep -x "$savefile" ${register} > /dev/null
     if [ $? -eq 0 ]
     then
 	# savefile was already on the register file
@@ -235,18 +235,18 @@ function cleanCategory()
 
     register=${pipelineregisterdir}/.pipeline.register.${category}
  
-    if [ -e $register ] 
+    if [ -e "$register" ] 
     then
 	for file in `cat `
 	do
-	    if [ -d $file ] 
+	    if [ -d "$file" ] 
 	    then
-		rm -rf $file
+		rm -rf "$file"
 	    else
-		rm $file
+		rm "$file"
 	    fi
 	done
-	rm ${pipelineregisterdir}/.pipeline.register.${category}
+	rm "${pipelineregisterdir}/.pipeline.register.${category}"
 	echo "Cleaned up ${category} files."
     else
 	echo "No register file $register found. Directory was perhaps already clean?"
@@ -315,9 +315,18 @@ then
     NPROCBIN=`which nproc`
     if [ -x $NPROCBIN ] 
     then
+	# linux with modern core-utils
 	NPROC=`$NPROCBIN`
+    elif [ -x /proc/cpuinfo ]
+    then
+	# linux with a proc fs
+	NPROC=`grep -c processor /proc/cpuinfo` 
+    elif [ -x /usr/sbin/sysctl ]
+    then
+        # Mac OS X
+	NPROC=`/usr/sbin/sysctl -n hw.ncpu`
     fi
-
+    
     if [ -z "$NPROC" ] 
     then 
 	NPROC=1

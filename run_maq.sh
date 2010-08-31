@@ -190,6 +190,7 @@ then
     plotsplicesites=yes
 fi
 
+# splicesite plot window, bases before and after the 3'sa dinucleotide (typically AG)
 beforeag=88
 afterag=5
 
