@@ -269,11 +269,14 @@ do
 	if needsUpdate $comptab ${tablistfile} ${libtabfilename[${liba}]} ${libtabfilename[${libb}]} $BINDIR/compare_counts_tabs.pl
 	then
 	    echo Compare by: $BINDIR/compare_counts_tabs.pl -o $comptab -M ${libsize[${liba}]} -N ${libsize[${libb}]} ${libtabfilename[${liba}]} ${libtabfilename[${libb}]}
+	    registerFile ${comptab} result
 	    $BINDIR/compare_counts_tabs.pl -o $comptab -M ${libsize[${liba}]} -N ${libsize[${libb}]} ${libtabfilename[${liba}]} ${libtabfilename[${libb}]}
 	    updates=yes
 
+	    registerFile ${comptab}.reg temp
 	    perl -ne 'my $section=0; my $print_section=3; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' <$comptab > ${comptab}.reg
 	    perl -ne 'my $section=0; my $print_section=4; while(my $r=<STDIN>) {chomp $r; if($r=~/^\*\*\*/) { $section++ } if($print_section == $section) {print $r,"\n";}}' < $comptab |grep -v "\#\#\#" >> ${comptab}.reg 
+	    
 	else
 	    echo Compare ${libtabfilename[${liba}]} vs ${libtabfilename[${libb}]}: not done, already up to date.
 	fi
@@ -290,6 +293,7 @@ do
     then
 	# -i 900 -u 2000 -f 0.6
         # the -A option now gives all genes passing the major site maximum fraction threshold with at least two alternative sites, valid according to the filter criteria.
+	registerFile $altspliceanalysis result
 	$BINDIR/altsplice_analysis.pl -A -o $altspliceanalysis -M ${libsize[${liba}]} -i 50000 -u 2000 -c 0 -f 0.6 ${libtabfilename[${liba}]}
 	updates=yes
     fi
@@ -305,6 +309,7 @@ if needsUpdate $summary ${comptabs[@]} $tablistfile
 then
     rundate=`date`
     echo "Comparison with ${tablistfile} ($rundate)" > $summary
+    registerFile $summary result
 
     for comptab in ${comptabs[@]}
     do
@@ -348,30 +353,39 @@ function updateNormtab()
         # get all the genes that have sign difference between any two samples
 	for compreg in ${comptabs[@]/compare/compare.reg}
 	do
+	    registerFile ${compreg}.list temp
 	    grep -v "^#\|\*" $compreg |awk '($2 !="") { print $1 }' > ${compreg}.list;
 	done
 
+
 	cat ${comptabs[@]/compare/compare.reg.list} |sort -n |uniq > ${tablistfile}.reg.list
+	registerFile ${tablistfile}.reg.list temp
 
         # individual columns for the norm tab, only genes listed above that have sign diff btw any two samples
 	for tab in ${libtabfilename[@]}
 	do 
 	    on_exp_list=${tab%%.counts.tab}.on_exp_list.tab
 
+	    registerFile ${on_exp_list} temp
 	    $BINDIR/grep_big_list.pl -w -f ${tablistfile}.reg.list $tab > ${on_exp_list}
 
+	    registerFile ${on_exp_list}.name.tab temp
 	    awk '{print $1}' ${on_exp_list} > ${on_exp_list%%.tab}.name.tab
+	    registerFile ${on_exp_list}.norm.tab temp
 	    awk '{print $5}' ${on_exp_list} > ${on_exp_list%%.tab}.norm.tab
 	done
     else
 	for tab in ${libtabfilename[@]}
 	do 
+	    registerFile ${tab%%counts.tab}name.tab temp
 	    awk '($2 >= 0) {print $1}' ${tab} > ${tab%%counts.tab}name.tab
+	    registerFile ${tab%%counts.tab}norm.tab temp
 	    awk '($2 >= 0) {print $5}' ${tab} > ${tab%%counts.tab}norm.tab
 	done
     fi
 
     # norm tab header
+    registerFile $mynormtab result
     echo Name ${libname[@]} Desc| perl -ne 's/ /\t/g; print;' > ${mynormtab}
     
     if [ "$sign" = "yes" ] 
@@ -393,6 +407,7 @@ function updateNormtab()
 	$BINDIR/join_columns.pl -H ${libtabfilename[0]/counts.tab/name.tab} ${libtabfilename[@]/counts.tab/norm.tab} ${firstfile}.desc >> ${mynormtab}
     fi
 
+    registerFile ${mynormtab}.stats.R temp
     # standard dev, average on each gene, using R
     cat > ${mynormtab}.stats.R <<-STATS
 	normtab <- read.table("${mynormtab}", header=TRUE)
@@ -400,6 +415,7 @@ function updateNormtab()
 	normtab\$sd<-apply(normtab[2:(2-1+${numlibs})],1,sd)
 	write.table(normtab[c(1:(2-1+${numlibs}),(2-1+${numlibs}+2):(2-1+${numlibs}+3),(2-1+${numlibs}+1))], file="${mynormtab%%tab}stats.tab", sep="\t",quote=F)
 STATS
+    registerFile ${mynormtab%%tab}stats.tab result
     R CMD BATCH --no-save --slave ${mynormtab}.stats.R /dev/null
 #    R CMD BATCH ${mynormtab}.stats.R 
 
@@ -425,6 +441,7 @@ then
 
     # use R to scatterplot in a numlibs by numlibs matrix, with labels on the diagonal, and all dots above, significants below 
     # one could also do pairwise significants as before
+    registerFile ${normtab}.scatterplot.all.R temp
     cat > ${normtab}.scatterplot.all.R <<-SCATTERALL
 	normtab <- read.table("${normtab}", header=TRUE)
         normsigntab<-read.table("${normsigntab}", header=TRUE)
@@ -515,8 +532,10 @@ then
 
     if needsUpdate $org_gene_list $org_kegg_list
     then
+	registerFile ${org_kegg_list}.${org} temp
 	grep $org\: $org_kegg_list > ${org_kegg_list}.${org}
- 
+
+ 	registerFile $org_gene_list temp
 	awk '{ print $2,"\t",$1;}' ${org_kegg_list}.${org} |sed -e 's/'$org'://; s/path://;'  > $org_gene_list
 
 	update_pathways=yes
@@ -525,6 +544,7 @@ then
     
     if needsUpdate $pathwaylist $org_gene_list
     then
+	registerFile ${pathwaylist} temp
 	awk '($2 != "") {print $2}' $org_gene_list |sort|uniq > ${pathwaylist}
 	update_pathways=yes
 	updates=yes
@@ -532,6 +552,7 @@ then
 
     if [ ! -d pathways ]
     then
+	registerFile pathways temp 
 	mkdir pathways
 	update_pathways=yes
 	updates=yes
@@ -564,6 +585,7 @@ then
 	done
 
 	# sum up total counts per pathway
+	registerFile $pathwaysummary result
 	echo PathID Pathway ${libname[@]} > $pathwaysummary
 	for pathway in `cat ${pathwaylist}` ;
 	do 
@@ -578,7 +600,6 @@ then
 	updates=yes
     fi
 
-    
     foldchangetab=${pathwaysummary%%.summary.tab}.foldavg.summary.tab
     if needsUpdate $foldchangetab $normtab $tablistfile
     then
@@ -590,7 +611,7 @@ then
 	do
 	    pathwaynormtab=pathways/${normtab%%.norm.tab}.$pathway.norm.tab
 #	    echo Name ${libname[@]} Desc| perl -ne 's/ /\t/g; print;' > ${pathwaynormtab}
-
+	    registerFile $pathwaynormtab temp
 	    grep -w -f pathways/${pathway}.${org}_genes $normtab > ${pathwaynormtab}
 
 	    startcol=3
@@ -600,6 +621,7 @@ then
 
 	    # compute fold changes per and sum up and average over each fold change, 
 	    # note: set denominators of 0 to 0.9 ("fold change over 0 is slightly more impressive than fold change over 1") to avoid div by 0.
+	    registerFile ${pathwaynormtab%%.norm.tab}.fold_change_over_prev_stage.tab temp
 	    perl -e 'my $nfolds=0;
                      my @c;
                      my @foldsum; my @colsum;
@@ -651,6 +673,7 @@ then
 
 #  "PathwayNr","Pathway","PathwayId",'$' "LS","SS","PC","SSvsLS","PCsSS","LSvsPC"),"\n"
 
+	registerFile $foldchangetab result
 	perl -e 'print join("\t", @ARGV)' "PathwayNr" "Pathway" "PathwayId" ${libname[@]} ${libvsexp[@]} "\n" > $foldchangetab
 
 	for pathway in `cat ${pathwaylist}`
