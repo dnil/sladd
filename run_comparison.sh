@@ -162,6 +162,9 @@ tablistfile=$1 # file with ORDERED list of tabs to compare
 if [ ! -e "$tablistfile" ]
 then
     echo "Tab list file $tablistfile not found."
+#    echo "USAGE: ${0##*/} tabs_to_compare.ordered.list [gene_gff_type] [kegg_organism]"
+    perldoc $CALLED
+    exit
 fi
 
 : <<'POD_ARG'
@@ -369,9 +372,9 @@ function updateNormtab()
 	    registerFile ${on_exp_list} temp
 	    $BINDIR/grep_big_list.pl -w -f ${tablistfile}.reg.list $tab > ${on_exp_list}
 
-	    registerFile ${on_exp_list}.name.tab temp
+	    registerFile ${on_exp_list%%.tab}.name.tab temp
 	    awk '{print $1}' ${on_exp_list} > ${on_exp_list%%.tab}.name.tab
-	    registerFile ${on_exp_list}.norm.tab temp
+	    registerFile ${on_exp_list%%.tab}.norm.tab temp
 	    awk '{print $5}' ${on_exp_list} > ${on_exp_list%%.tab}.norm.tab
 	done
     else
@@ -395,6 +398,7 @@ function updateNormtab()
     else
 	firstfile=${libtabfilename[0]}
     fi
+    registerFile ${firstfile}.desc temp
     awk '($2 != "") { print $13}' $firstfile > ${firstfile}.desc
 #    awk '($2 != "") { print $13}' $firstfile > ${firstfile}.dir
 #    awk '($2 != "") { print $13}' $firstfile > ${firstfile}.start
