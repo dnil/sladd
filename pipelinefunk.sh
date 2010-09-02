@@ -237,7 +237,7 @@ function cleanCategory()
  
     if [ -e "$register" ] 
     then
-	for file in `cat `
+	for file in `cat $register`
 	do
 	    if [ -d "$file" ] 
 	    then
