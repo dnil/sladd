@@ -224,10 +224,23 @@ do
 
     tagfile=${libtab%%_vs_*}.fastq
 
-    alignmentprogramtmp=${libtab%%map.counts.tab}
-    alignmentprogram=${alignmentprogramtmp##*.}
+    alignmentprogramtmp=${libtab%%.counts.tab}
+    
+    alignmentsingle=${alignmentprogramtmp##*.}
+    echo $alignmentsingle
+    if [[ "$alignmentsingle" == *map ]]
+    then
+	alignmentprogramtmp=${libtab%%map.counts.tab}
+	alignmentprogram=${alignmentprogramtmp##*.}
+	alignmentsingle="multi"
+    else
+	# q30 or single after last dot before .counts.tab
+	alignmentprogramtmp=${libtab%%map*}
+	alignmentprogram=${alignmentprogramtmp##*.}
+    fi
 
-#    echo $alignmentprogram
+    echo $alignmentprogram
+    echo $alignmentsingle
 
     libsize[${libnr}]=`grep -c ^@ ${tagfile}`
     libname[${libnr}]=`grep $libtab $tablistfile |awk '{ print $2 }'` 
@@ -268,7 +281,12 @@ do
 #    echo a is $liba -- libb offset $libboffset
     for ((libb=$libboffset;libb<$numlibs;libb++))
     do
-	comptab=${libname[${liba}]}_vs_${libname[${libb}]}.${alignmentprogram}.map.counts.compare
+	comptab=${libname[${liba}]}_vs_${libname[${libb}]}.${alignmentprogram}.map.${alignmentsingle}.counts.compare
+	if [ "$alignmentsingle" == "multi" ] 
+	then
+	    comptab=${libname[${liba}]}_vs_${libname[${libb}]}.${alignmentprogram}.map.counts.compare
+	fi
+
 	if needsUpdate $comptab ${tablistfile} ${libtabfilename[${liba}]} ${libtabfilename[${libb}]} $BINDIR/compare_counts_tabs.pl
 	then
 	    echo Compare by: $BINDIR/compare_counts_tabs.pl -o $comptab -M ${libsize[${liba}]} -N ${libsize[${libb}]} ${libtabfilename[${liba}]} ${libtabfilename[${libb}]}
@@ -527,8 +545,6 @@ then
 
     echo Check for KEGG organism updates done.
 
-#    wget -c ftp://ftp.genome.jp/pub/kegg/pathway/organisms/tbr/tbr_gene_map.tab   
-
     # make a set of gene lists for each pathway in a subdir called pathway
     org_gene_list=${org}_kegg.list.gene_first
     
@@ -616,7 +632,17 @@ then
 	    pathwaynormtab=pathways/${normtab%%.norm.tab}.$pathway.norm.tab
 #	    echo Name ${libname[@]} Desc| perl -ne 's/ /\t/g; print;' > ${pathwaynormtab}
 	    registerFile $pathwaynormtab temp
-	    grep -w -f pathways/${pathway}.${org}_genes $normtab > ${pathwaynormtab}
+	    if [ "$org" == "tcr" ]
+	    then
+
+		# KEGG decided not use abbreviated pathway ids of
+		# tc. That won't work with grep -w. And non-w is a
+		# clear no-no when dealing with gene names ending in
+		# .10, .100 and so on.
+
+		awk '{print "Tc00.1047053"$1}' <pathways/${pathway}.${org}_genes >pathways/${pathway}.${org}_genes.edit
+		mv pathways/${pathway}.${org}_genes.edit pathways/${pathway}.${org}_genes
+	    fi
 
 	    startcol=3
 	    endcol=$(( $numblibs + 1 ))
