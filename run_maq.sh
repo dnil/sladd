@@ -475,9 +475,15 @@ then
     if needsUpdate ${map}.txt $map
     then
 	$MAQBIN mapview ${map} > ${map}.txt
-	registerFile ${map}.txt temp
+	registerFile ${map}.txt temp	
 	updates=yes
     fi
+fi
+
+libmappedok=$libsize
+if [ "$ALIGN" == "maq" ]
+then
+    libmappedok=`wc -l ${map}.txt`
 fi
 
 singlelabel=q${alqt}
