@@ -7,6 +7,34 @@ use Bio::Seq;
 use Bio::SeqIO;
 use Bio::SeqFeature::Generic;
 
+=head1 NAME
+
+catch_first_and_last_in_tu.pl - pick N genes from head and tail of TUs
+
+=head1 AUTHOR
+
+Daniel Nilsson, daniel.nilsson@izb.unibe.ch, daniel.nilsson@ki.se, daniel.k.nilsson@gmail.com
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2009, 2010 held by Daniel Nilsson. The package is realesed for use under the Perl Artistic License.
+
+=head1 SYNOPSIS
+
+USAGE: C<catch_first_and_last_in_tu.pl -g tu_gff_file [-n pickN(4)]>
+
+=head1 DESCRIPTION
+
+Pick a number of genes from start and end of a TU, using TU gffs from process_tu.pl, keeping
+track of TU strand orientation so that "head" genes are always listed
+first, and "tail" genes last.
+
+=head1 DEPENDENCIES
+
+BioPerl. process_tu.pl to produce the TU GFF input files.
+
+=cut
+
 my $DEBUG = 0;
 my $WARNING = 1;
 
@@ -38,6 +66,10 @@ while (my $arg = shift @ARGV) {
             }
         }
 	
+	# TODO:
+	# tail-only flag..
+	# head-only flag..
+
         if ($arg eq '-o') {
             my $next_arg = shift @ARGV;
             if($next_arg eq "") {
