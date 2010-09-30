@@ -38,7 +38,7 @@ BioPerl. process_tu.pl to produce the TU GFF input files.
 my $DEBUG = 0;
 my $WARNING = 1;
 
-my $gene_gff_file_name ="";
+my $tu_gff_file_name ="";
 my $gff_out = "";
 my $output_file_name = "";
 
@@ -52,7 +52,7 @@ while (my $arg = shift @ARGV) {
                 print "-g requires an argument, but non given. Bailing out.\n";
                 exit 1;
             } else {
-                $gene_gff_file_name = $next_arg;
+                $tu_gff_file_name = $next_arg;
             }
         }
 
@@ -117,7 +117,7 @@ while ( my $tu = shift @tus ) {
     
     # genes of tu
     my (@tugenes) = ($tu->get_tag_values('gene_name'));
-    $n = scalar(@tugenes);
+    my $n = scalar(@tugenes);
 
     if ( $n < 2*$pickN ) {
 	$tooshort++;
@@ -135,12 +135,12 @@ while ( my $tu = shift @tus ) {
 	(@lasttugenes)= (@tugenes[0..($pickN-1)]);
     }
 
-    my ($ref_name) = ($feat->get_tag_values('ref_name'));
+    my ($ref_name) = ($tu->get_tag_values('ref_name'));
 
-    print $output "$ref_name\t",join(",",@firsttugenes),"\t",join(",",@lasttugenes),"\n";
+    print $outputfh "$ref_name\t\t\t",$tu->start,"\t",$tu->end,"\t",$n,"\t",$tu->strand,"\t",join(",",@firsttugenes),"\t",join(",",@lasttugenes),"\n";
     
 }
-$WARNING && print STDERR "OK\n";
+$WARNING && print STDERR "OK ($tooshort units with <",2*$pickN," genes were ignored).\n";
     
 sub parse_gff_row {
     my $r = shift;
