@@ -222,7 +222,7 @@ sub parse_gff_row {
 
     $feat->add_tag_value("ref_name",$ref_name);
 
-    return $feat;
+    return \$feat;
 }
 
 
