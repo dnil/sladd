@@ -7,9 +7,13 @@ require Exporter;
     
 seqfunk - some small functions for sequnence handling
 
-=head1 AUTHOUR
+=head1 AUTHOR
 
 Daniel Nilsson, daniel.nilsson@ki.se, daniel.k.nilsson@gmail.com
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2000-2010 held by Daniel Nilsson. The package is realesed for use under the Perl Artistic License.
 
 =head1 SYNOPSIS
     

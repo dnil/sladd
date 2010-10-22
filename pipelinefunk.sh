@@ -16,6 +16,30 @@ Copyright Daniel Nilsson, 2010.
 
 The package is released under the Perl Artistic License.
 
+=head1 DESCRIPTION
+
+pipelinefunk is a lightweight make-like framework for bash. It
+provides a few functions to simplify the use of datestamps and
+dependencies to determine what analyses need be updated in a
+project. This allows for some trivial checkpointing, and for making
+minor updates to analyses etc without having to rerun compute heavy
+early analyses. The package also has some rudimentary functions for
+file tracking, to simplify cleaning and results packaging tasks. See
+more documentation for each function below, but beware of the central
+caveat in needsUpdate:
+
+=over 4 
+
+=item *
+
+If your run crashes or there are uncaught problems with input data
+etc, incomplete or incorrect results files will be produced. These
+will then not be rerun upon a restart, unless a dependent data or
+script file is updated. So take care to clean any such
+incomplete/incorrect files before resuming.
+
+=back 
+
 =head1 APPENDIX
 
 The rest of the documentation details individual functions and quirks.
@@ -185,8 +209,6 @@ function registerFile()
 # USAGE: flagActive file 
 #
 #Flags file as being written. Use to provide some protection against inconsistencies when a run is interrupted.
-#Note that the flag will 
-#
 #
 #NOT safe for multiple instances of pipelines running concurrently!
 #
@@ -257,10 +279,14 @@ function cleanCategory()
 
 =head1 SYNOPSIS
 
- [DIRECTIVE='clean|shinyclen|onlyshinyclean']
+ [DIRECTIVE='onlyclean|onlyshinyclean|clean|shinyclean']
  . pipelinefunk.sh
 
-If a directive of e.g. C<clean> is set already when sourcing this, then clean accordingly. A directive can be given in C<$1> or C<$DIRECTIVE>.
+If a directive of e.g. C<onlyclean> is set already when sourcing this,
+then clean accordingly. A directive can be given in C<$1> or
+C<$DIRECTIVE>. Note that for most pipelines, giving the directive on
+the command line as C<$1> would interfere with normal usage, and so be
+limited to onlyclean and onlyshinyclean.
 
 =over 4
 
@@ -272,9 +298,14 @@ Clean temp files.
 
 Clean both temp files and results.
 
+=item C<onlyclean>
+
+Clean temp files, then terminate unconditionally
+without returning to the rest of the pipeline.
+
 =item C<onlyshinyclean>
 
-Clean both temp files and results and then terminate unconditionally
+Clean both temp files and results, then terminate unconditionally
 without returning to the rest of the pipeline.
 
 =back
@@ -291,7 +322,12 @@ fi
 if [ "$DIRECTIVE" == "clean" ]
 then
     cleanCategory temp
-    
+fi
+
+if [ "$DIRECTIVE" == "onlyclean" ]
+then
+    cleanCategory temp
+    exit
 fi
 
 if [ "$DIRECTIVE" == "shinyclean" ]
