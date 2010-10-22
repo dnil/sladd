@@ -386,6 +386,7 @@ then
 	    
 	splitmapupdate="no"
 	arglist=""
+	declare -a splitmaps
 
 	for splittagfile in ${tagfileprefix}[a-z][a-z]
 	do
@@ -408,8 +409,8 @@ then
 		registerFile $splitmap temp
 	    fi
 	    
-	    splittagfiles[$splitnr]=$splittagfile
-	    splitmap[$splitnr]=$splitmap
+#	    splittagfiles[$splitnr]=$splittagfile
+	    splitmaps[$splitnr]=$splitmap
 	    splitnr=$(( $splitnr + 1 ))
 	done
 
@@ -429,7 +430,7 @@ then
 
 	if [ "$mapupdate" = "yes" ] 
 	then
-	    $MAQBIN mapmerge $map ${splitmap[@]}
+	    $MAQBIN mapmerge $map ${splitmaps[@]}
 	    registerFile $map result
 	fi
     else
