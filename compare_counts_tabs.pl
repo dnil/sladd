@@ -222,11 +222,9 @@ foreach my $name (@names) {
     }
 
     for (my $i=0; $i< @liba_sites; $i++) {
-	
 	if( !defined($libbsite{$liba_sites[$i]}) ) {
 	    $libbsite{$liba_sites[$i]} = 0;
 	}
-	
     }
 
     # also tally the fractions of each total
@@ -297,8 +295,7 @@ foreach my $name (@names) {
 
 
     # perhaps also test within each lib, if A-C statistic non-significant between the top and runner up§
-    
-    
+        
 }
 $WARNING && print STDERR "OK\n";
 
@@ -449,7 +446,11 @@ sub parse_tab_row {
     } elsif ( defined($strand) && $strand eq '-')  {
 	$direction = -1;
     } else {
-	$WARNING && print STDERR "WARNING: weird strand assignment! Column error? $r\n";
+	if ($name ne "" && (!defined($strand) or $strand eq "") && (!defined($start) or $start eq "") ) {
+	    $WARNING && print STDERR "Found name tag. Processing $name.\n";
+	} else {
+	    $WARNING && print STDERR "WARNING: weird strand assignment! Column error? $r\n";
+	}
 	return ("comment line");
     }
 

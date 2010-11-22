@@ -227,7 +227,7 @@ do
     alignmentprogramtmp=${libtab%%.counts.tab}
     
     alignmentsingle=${alignmentprogramtmp##*.}
-    echo $alignmentsingle
+ #   echo $alignmentsingle
     if [[ "$alignmentsingle" == *map ]]
     then
 	alignmentprogramtmp=${libtab%%map.counts.tab}
@@ -239,8 +239,8 @@ do
 	alignmentprogram=${alignmentprogramtmp##*.}
     fi
 
-    echo $alignmentprogram
-    echo $alignmentsingle
+#    echo $alignmentprogram
+#    echo $alignmentsingle
 
     libsize[${libnr}]=`grep -c ^@ ${tagfile}`
     libname[${libnr}]=`grep $libtab $tablistfile |awk '{ print $2 }'` 
@@ -494,18 +494,18 @@ then
 			xsignlogged[xsignlogged==-Inf] <- 0
 			ysignlogged[ysignlogged==-Inf] <- 0
                         if(colnr>rownr) {
-				plot( xlogged, ylogged, pch=".",cex=1.5, xlab=names(normtab)[1+colnr], ylab=names(normtab)[1+rownr],xlim=c(0,4), ylim=c(0,4)) 
+				plot( xlogged, ylogged, pch=".",cex=1.5, xlab=names(normtab)[1+colnr], ylab=names(normtab)[1+rownr],xlim=c(0,4), ylim=c(0,4))
+
+				spearmancor <- cor.test(normtab[,1+colnr], normtab[,1+rownr], method="spearman")
+				pearsoncor <- cor.test(normtab[,1+colnr], normtab[,1+rownr], method="pearson")
+				linreg <- summary(lm(normtab[,1+colnr]~normtab[,1+rownr]))
+
+				corstr <- sprintf("Overall TPM norm correlations %s to %s; Spearman rho=%.2f (p<=%.4f), Pearson r=%.2f (p<=%.4f), Linear reg model R2=%.3f\\n",names(normtab)[1+colnr], names(normtab)[1+rownr], spearmancor\$estimate, spearmancor\$p.value,pearsoncor\$estimate,pearsoncor\$p.value,linreg\$adj.r.squared)
+
+				cat(corstr,file="${summary}", sep="\\n", append=TRUE)
 			} else {
-				plot( xsignlogged, ysignlogged, pch=".",cex=1.5, xlab=names(normsigntab)[1+colnr], ylab=names(normsigntab)[1+rownr],xlim=c(0,4), ylim=c(0,4)) 
+				plot( xsignlogged, ysignlogged, pch=".",cex=1.5, xlab=names(normsigntab)[1+colnr], ylab=names(normsigntab)[1+rownr],xlim=c(0,4), ylim=c(0,4))
 			}
-			spearmancor <- cor.test(normtab[,1+colnr], normtab[,1+rownr], method="spearman")
-			pearsoncor <- cor.test(normtab[,1+colnr], normtab[,1+rownr], method="pearson")
-			linreg <- summary(lm(normtab[,1+colnr]~normtab[,1+rownr]))
-
-			corstr <- sprintf("Overall TPM norm correlations %s to %s; Spearman rho=%.2f (p<=%.4f), Pearson r=%.2f (p<=%.4f), Linear reg model R2=%.3f\\n",names(normtab)[1+colnr], names(normtab)[1+rownr], spearmancor\$estimate, spearmancor\$p.value,pearsoncor\$estimate,pearsoncor\$p.value,linreg\$adj.r.squared)
-
-			cat(corstr,file="${summary}", sep="\\n", append=TRUE)
-
 		}
 	}
 	dev.off()
