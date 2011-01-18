@@ -376,11 +376,12 @@ then
 	    
 	if [ "$bfqupdate" = "yes" ]
 	then
-	    echo "DEBUG: run xargs -P $NPROC -n 2 $MAQBIN fastq2bfq ON $arglist."
+	    rundate=`date`
+	    echo "Run xargs -P $NPROC -n 2 $MAQBIN fastq2bfq ON $arglist : ($rundate)" >> $log
 	    echo $arglist | xargs -P $NPROC -n 2 $MAQBIN fastq2bfq
 	    updates="yes"
 	fi
-	    
+ 
 	declare -a logs
 	lognr=0
 	    
@@ -400,8 +401,10 @@ then
 		logs[$lognr]=$log
 		lognr=$(( $lognr + 1 ))
 	    
+
+		# init the split log
 		rundate=`date`
-		echo "$MAQBIN map -n 3 $splitmap $refbfa $bfqfile : (${rundate})" >> ${log}
+		echo "Using xargs, run $MAQBIN map -n 3 $splitmap $refbfa $bfqfile : (${rundate})" >> ${log} 
 
 		arglist=$arglist"$splitmap $refbfa $bfqfile ${log} "
 		splitmapupdate="yes"
@@ -416,11 +419,14 @@ then
 
 	if [ "$splitmapupdate" = "yes" ]
 	then
+	    log=${map}.log
+	    rundate=`date`
+	    echo "Run xargs -P $NPROC -n 4 sh -c $MAQBIN map -n 3 with arglist $arglist : ($rundate)" >> ${log}
 	    echo $arglist | xargs -P $NPROC -n 4 sh -c "$MAQBIN map -n 3 \$1 \$2 \$3 2>> \$4" -
 	
 	    for mylog in ${logs[@]}
 	    do
-		cat $mylog >> ${map}.log
+		cat $mylog >> ${log}
 		rm $mylog
 	    done
 
@@ -430,6 +436,7 @@ then
 
 	if [ "$mapupdate" = "yes" ] 
 	then
+	    echo "$MAQBIN mapmerge $map ${splitmaps[@]}" >> ${log}
 	    $MAQBIN mapmerge $map ${splitmaps[@]}
 	    registerFile $map result
 	fi
@@ -441,8 +448,9 @@ then
 
 	if needsUpdate $bfqfile $tagfile
 	then
+	    echo "$MAQBIN fastq2bfq $tagfile $bfqfile" >> ${log}
 	    $MAQBIN fastq2bfq $tagfile $bfqfile
-	    registerFile $bfqfile temp	    
+	    registerFile $bfqfile temp
 	    updates=yes
 	fi
 
@@ -466,7 +474,6 @@ then
     # -M 1 to account for multimappers..
     $BOWTIEBINDIR/bowtie --best -M 1 -n 3 -p $NCPU $refhash $tagfile $map
     registerFile $map result
-
 fi
 # no else for method choice -- this will have been cleared previously.
 
