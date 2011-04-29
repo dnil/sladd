@@ -376,6 +376,7 @@ then
 	    
 	if [ "$bfqupdate" = "yes" ]
 	then
+	    log=${map}.log
 	    rundate=`date`
 	    echo "Run xargs -P $NPROC -n 2 $MAQBIN fastq2bfq ON $arglist : ($rundate)" >> $log
 	    echo $arglist | xargs -P $NPROC -n 2 $MAQBIN fastq2bfq
@@ -401,7 +402,6 @@ then
 		logs[$lognr]=$log
 		lognr=$(( $lognr + 1 ))
 	    
-
 		# init the split log
 		rundate=`date`
 		echo "Using xargs, run $MAQBIN map -n 3 $splitmap $refbfa $bfqfile : (${rundate})" >> ${log} 
